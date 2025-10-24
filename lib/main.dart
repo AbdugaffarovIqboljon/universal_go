@@ -7,7 +7,7 @@ import 'package:universal_go/injection_container.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  
+
   // Initialize Firebase (with error handling)
   try {
     await Firebase.initializeApp();
@@ -16,13 +16,12 @@ void main() async {
       debugPrint('Firebase initialization failed: $e');
     }
   }
-  
+
   // Initialize Hive
   await Hive.initFlutter();
-  
+
   // Configure dependencies
   await configureDependencies();
-  
+
   runApp(const UniversalGoApp());
 }
- 

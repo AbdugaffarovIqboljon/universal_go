@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:universal_go/features/auth/presentation/bloc/auth_bloc.dart';
 import 'package:universal_go/injection_container.dart';
 import 'package:universal_go/config/theme/app_theme.dart';
@@ -28,12 +29,18 @@ class UniversalGoApp extends StatelessWidget {
           ),
         ),
       ],
-      child: MaterialApp(
-        title: 'Universal Go',
-        theme: AppTheme.lightTheme,
-        onGenerateRoute: AppRouter.generateRoute,
-        initialRoute: AppRoutes.splash,
-        debugShowCheckedModeBanner: false,
+      child: ScreenUtilInit(
+        designSize: const Size(375, 812),
+        minTextAdapt: true,
+        builder: (context, child) {
+          return MaterialApp(
+            title: 'Universal Go',
+            theme: AppTheme.lightTheme,
+            onGenerateRoute: AppRouter.generateRoute,
+            initialRoute: AppRoutes.splash,
+            debugShowCheckedModeBanner: false,
+          );
+        },
       ),
     );
   }

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:universal_go/features/auth/presentation/bloc/auth_bloc.dart';
 import 'package:universal_go/features/auth/presentation/bloc/auth_event.dart';
 import 'package:universal_go/features/auth/presentation/bloc/auth_state.dart';
@@ -53,34 +54,34 @@ class _RegisterPageState extends State<RegisterPage> {
           }
         },
         child: SingleChildScrollView(
-          padding: const EdgeInsets.all(16.0),
+          padding: EdgeInsets.all(16.w),
           child: Form(
             key: _formKey,
             child: Column(
               children: [
-                const SizedBox(height: 32),
-                const Icon(
+                SizedBox(height: 32.h),
+                Icon(
                   Icons.store,
-                  size: 80,
+                  size: 80.w,
                   color: Colors.green,
                 ),
-                const SizedBox(height: 32),
-                const Text(
+                SizedBox(height: 32.h),
+                Text(
                   'Create Account',
                   style: TextStyle(
-                    fontSize: 24,
+                    fontSize: 24.sp,
                     fontWeight: FontWeight.bold,
                   ),
                 ),
-                const SizedBox(height: 8),
-                const Text(
+                SizedBox(height: 8.h),
+                Text(
                   'Join MiniMarket today',
                   style: TextStyle(
-                    fontSize: 16,
+                    fontSize: 16.sp,
                     color: Colors.grey,
                   ),
                 ),
-                const SizedBox(height: 32),
+                SizedBox(height: 32.h),
                 TextFormField(
                   controller: _nameController,
                   decoration: const InputDecoration(
@@ -94,7 +95,7 @@ class _RegisterPageState extends State<RegisterPage> {
                     return null;
                   },
                 ),
-                const SizedBox(height: 16),
+                SizedBox(height: 16.h),
                 TextFormField(
                   controller: _emailController,
                   keyboardType: TextInputType.emailAddress,
@@ -112,7 +113,7 @@ class _RegisterPageState extends State<RegisterPage> {
                     return null;
                   },
                 ),
-                const SizedBox(height: 16),
+                SizedBox(height: 16.h),
                 DropdownButtonFormField<String>(
                   initialValue: _selectedRole,
                   decoration: const InputDecoration(
@@ -135,7 +136,7 @@ class _RegisterPageState extends State<RegisterPage> {
                     });
                   },
                 ),
-                const SizedBox(height: 16),
+                SizedBox(height: 16.h),
                 TextFormField(
                   controller: _passwordController,
                   obscureText: _obscurePassword,
@@ -163,7 +164,7 @@ class _RegisterPageState extends State<RegisterPage> {
                     return null;
                   },
                 ),
-                const SizedBox(height: 16),
+                SizedBox(height: 16.h),
                 TextFormField(
                   controller: _confirmPasswordController,
                   obscureText: _obscureConfirmPassword,
@@ -191,12 +192,12 @@ class _RegisterPageState extends State<RegisterPage> {
                     return null;
                   },
                 ),
-                const SizedBox(height: 24),
+                SizedBox(height: 24.h),
                 BlocBuilder<AuthBloc, AuthState>(
                   builder: (context, state) {
                     return SizedBox(
                       width: double.infinity,
-                      height: 50,
+                      height: 50.h,
                       child: ElevatedButton(
                         onPressed: state is AuthLoading
                             ? null
@@ -219,7 +220,7 @@ class _RegisterPageState extends State<RegisterPage> {
                     );
                   },
                 ),
-                const SizedBox(height: 16),
+                SizedBox(height: 16.h),
                 TextButton(
                   onPressed: () {
                     Navigator.pop(context);

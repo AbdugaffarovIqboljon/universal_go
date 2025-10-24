@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
-import 'package:universal_go/config/theme/app_theme.dart';
+import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:universal_go/features/auth/presentation/bloc/auth_bloc.dart';
 import 'package:universal_go/features/auth/presentation/bloc/auth_event.dart';
 import 'package:universal_go/features/auth/presentation/bloc/auth_state.dart';
@@ -40,7 +40,7 @@ class _LoginPageState extends State<LoginPage> {
               Navigator.pushReplacementNamed(context, AppRoutes.customerHome);
             } else if (state.user.role == 'seller') {
               Navigator.pushReplacementNamed(
-                  context, AppRoutes.sellerDashboard);
+                  context, AppRoutes.sellerDashboard, );
             }
           } else if (state is AuthFailure) {
             ScaffoldMessenger.of(context).showSnackBar(
@@ -49,7 +49,7 @@ class _LoginPageState extends State<LoginPage> {
           }
         },
         child: Padding(
-          padding: const EdgeInsets.all(16.0),
+          padding: EdgeInsets.all(16.w),
           child: Form(
             key: _formKey,
             child: Column(
@@ -57,27 +57,26 @@ class _LoginPageState extends State<LoginPage> {
               children: [
                 Image.asset(
                   "assets/images/img_universal_go_logo.png",
-                  width: 100,
-                  height: 100, 
-                  color: AppTheme.backgroundColor,
+                  width: 100.w,
+                  height: 100.h, 
                 ),
-                const SizedBox(height: 32),
-                const Text(
-                  'Welcome to MiniMarket',
+                SizedBox(height: 32.h),
+                Text(
+                  'Welcome to UniversalGo',
                   style: TextStyle(
-                    fontSize: 24,
+                    fontSize: 24.sp,
                     fontWeight: FontWeight.bold,
                   ),
                 ),
-                const SizedBox(height: 8),
-                const Text(
+                SizedBox(height: 8.h),
+                Text(
                   'Sign in to continue',
                   style: TextStyle(
-                    fontSize: 16,
+                    fontSize: 16.sp,
                     color: Colors.grey,
                   ),
                 ),
-                const SizedBox(height: 32),
+                SizedBox(height: 32.h),
                 TextFormField(
                   controller: _emailController,
                   keyboardType: TextInputType.emailAddress,
@@ -95,7 +94,7 @@ class _LoginPageState extends State<LoginPage> {
                     return null;
                   },
                 ),
-                const SizedBox(height: 16),
+                SizedBox(height: 16.h),
                 TextFormField(
                   controller: _passwordController,
                   obscureText: _obscurePassword,
@@ -125,12 +124,12 @@ class _LoginPageState extends State<LoginPage> {
                     return null;
                   },
                 ),
-                const SizedBox(height: 24),
+                SizedBox(height: 24.h),
                 BlocBuilder<AuthBloc, AuthState>(
                   builder: (context, state) {
                     return SizedBox(
                       width: double.infinity,
-                      height: 50,
+                      height: 50.h,
                       child: ElevatedButton(
                         onPressed: state is AuthLoading
                             ? null
@@ -152,7 +151,7 @@ class _LoginPageState extends State<LoginPage> {
                     );
                   },
                 ),
-                const SizedBox(height: 16),
+                SizedBox(height: 16.h),
                 TextButton(
                   onPressed: () {
                     Navigator.pushNamed(context, AppRoutes.register);

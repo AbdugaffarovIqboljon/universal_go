@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_screenutil/flutter_screenutil.dart';
 
 class AppTheme {
   // 💙 Base brand color family
@@ -16,6 +17,7 @@ class AppTheme {
 
   static ThemeData get lightTheme {
     return ThemeData(
+      scaffoldBackgroundColor: surfaceColor,
       useMaterial3: true,
       fontFamily: 'Poppins',
       colorScheme: ColorScheme.fromSeed(
@@ -34,13 +36,13 @@ class AppTheme {
       ),
 
       // 🧭 AppBar
-      appBarTheme: const AppBarTheme(
+      appBarTheme: AppBarTheme(
         backgroundColor: primaryColor,
         foregroundColor: onPrimary,
         elevation: 0,
         centerTitle: true,
         titleTextStyle: TextStyle(
-          fontSize: 20,
+          fontSize: 20.sp,
           fontWeight: FontWeight.w600,
           color: onPrimary,
           letterSpacing: 0.3,
@@ -55,10 +57,10 @@ class AppTheme {
           elevation: 3,
           shadowColor: primaryColor.withOpacity(0.25),
           shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(14),
+            borderRadius: BorderRadius.circular(14.r),
           ),
-          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
-          textStyle: const TextStyle(fontWeight: FontWeight.w600, fontSize: 16),
+          padding: EdgeInsets.symmetric(horizontal: 24.w, vertical: 14.h),
+          textStyle: TextStyle(fontWeight: FontWeight.w600, fontSize: 16.sp),
         ),
       ),
 
@@ -68,10 +70,10 @@ class AppTheme {
           backgroundColor: secondaryColor,
           foregroundColor: onPrimary,
           shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(14),
+            borderRadius: BorderRadius.circular(14.r),
           ),
-          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
-          textStyle: const TextStyle(fontWeight: FontWeight.w600, fontSize: 16),
+          padding: EdgeInsets.symmetric(horizontal: 24.w, vertical: 14.h),
+          textStyle: TextStyle(fontWeight: FontWeight.w600, fontSize: 16.sp),
         ),
       ),
 
@@ -79,12 +81,12 @@ class AppTheme {
       outlinedButtonTheme: OutlinedButtonThemeData(
         style: OutlinedButton.styleFrom(
           foregroundColor: primaryColor,
-          side: const BorderSide(color: primaryColor, width: 2),
+          side: BorderSide(color: primaryColor, width: 2.w),
           shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(14),
+            borderRadius: BorderRadius.circular(14.r),
           ),
-          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
-          textStyle: const TextStyle(fontWeight: FontWeight.w600, fontSize: 16),
+          padding: EdgeInsets.symmetric(horizontal: 24.w, vertical: 14.h),
+          textStyle: TextStyle(fontWeight: FontWeight.w600, fontSize: 16.sp),
         ),
       ),
 
@@ -93,26 +95,26 @@ class AppTheme {
         filled: true,
         fillColor: surfaceColor,
         border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(14),
+          borderRadius: BorderRadius.circular(14.r),
           borderSide: const BorderSide(color: Color(0xFFE2E8F0)), // Slate-200
         ),
         enabledBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(14),
+          borderRadius: BorderRadius.circular(14.r),
           borderSide: const BorderSide(color: Color(0xFFE2E8F0)),
         ),
         focusedBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(14),
-          borderSide: const BorderSide(color: primaryColor, width: 2),
+          borderRadius: BorderRadius.circular(14.r),
+          borderSide: BorderSide(color: primaryColor, width: 2.w),
         ),
         errorBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(14),
+          borderRadius: BorderRadius.circular(14.r),
           borderSide: const BorderSide(color: errorColor),
         ),
         focusedErrorBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(14),
-          borderSide: const BorderSide(color: errorColor, width: 2),
+          borderRadius: BorderRadius.circular(14.r),
+          borderSide: BorderSide(color: errorColor, width: 2.w),
         ),
-        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+        contentPadding: EdgeInsets.symmetric(horizontal: 16.w, vertical: 14.h),
       ),
 
       // 🧊 Card
@@ -120,10 +122,10 @@ class AppTheme {
         elevation: 3,
         shadowColor: primaryColor.withOpacity(0.1),
         shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(18),
+          borderRadius: BorderRadius.circular(18.r),
         ),
         color: surfaceColor,
-        margin: const EdgeInsets.all(8),
+        margin: EdgeInsets.all(8.w),
       ),
 
       // ⚓ Bottom Navigation
@@ -139,24 +141,24 @@ class AppTheme {
       dialogTheme: DialogThemeData(
         backgroundColor: surfaceColor,
         shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(20),
+          borderRadius: BorderRadius.circular(20.r),
         ),
-        titleTextStyle: const TextStyle(
-          fontSize: 18,
+        titleTextStyle: TextStyle(
+          fontSize: 18.sp,
           fontWeight: FontWeight.w700,
-          color: Color(0xFF1E293B),
+          color: const Color(0xFF1E293B),
         ),
-        contentTextStyle: const TextStyle(
-          fontSize: 15,
-          color: Color(0xFF334155),
+        contentTextStyle: TextStyle(
+          fontSize: 15.sp,
+          color: const Color(0xFF334155),
         ),
       ),
 
       // Text
-      textTheme: const TextTheme(
-        bodyLarge: TextStyle(fontSize: 16, color: Color(0xFF1E293B)),
-        bodyMedium: TextStyle(fontSize: 15, color: Color(0xFF334155)),
-        labelLarge: TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
+      textTheme: TextTheme(
+        bodyLarge: TextStyle(fontSize: 16.sp, color: const Color(0xFF1E293B)),
+        bodyMedium: TextStyle(fontSize: 15.sp, color: const Color(0xFF334155)),
+        labelLarge: TextStyle(fontSize: 14.sp, fontWeight: FontWeight.w600),
       ),
     );
   }
