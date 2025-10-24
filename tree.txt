@@ -1,0 +1,110 @@
+lib
+├── config
+│   └── theme
+│       └── app_theme.dart
+├── core
+│   ├── base
+│   │   └── usecase.dart
+│   ├── constants
+│   │   └── app_constants.dart
+│   ├── errors
+│   │   ├── exceptions.dart
+│   │   └── failures.dart
+│   ├── navigation
+│   │   ├── app_router.dart
+│   │   └── app_routes.dart
+│   ├── services
+│   │   ├── firebase
+│   │   │   ├── firebase_service.dart
+│   │   │   └── firebase_service_impl.dart
+│   │   └── location
+│   │       ├── location_service.dart
+│   │       └── location_service_impl.dart
+│   └── utils
+│       └── helpers.dart
+├── features
+│   ├── auth
+│   │   ├── data
+│   │   │   ├── datasources
+│   │   │   ├── models
+│   │   │   │   └── user_model.dart
+│   │   │   └── repositories
+│   │   │       └── auth_repository_impl.dart
+│   │   ├── domain
+│   │   │   ├── entities
+│   │   │   │   └── user_entity.dart
+│   │   │   ├── repositories
+│   │   │   │   └── auth_repository.dart
+│   │   │   └── usecases
+│   │   │       ├── get_current_user_usecase.dart
+│   │   │       ├── sign_in_usecase.dart
+│   │   │       ├── sign_out_usecase.dart
+│   │   │       └── sign_up_usecase.dart
+│   │   └── presentation
+│   │       ├── bloc
+│   │       │   ├── auth_bloc.dart
+│   │       │   ├── auth_event.dart
+│   │       │   └── auth_state.dart
+│   │       ├── pages
+│   │       │   ├── login_page.dart
+│   │       │   ├── register_page.dart
+│   │       │   └── splash_page.dart
+│   │       └── widgets
+│   ├── customer
+│   │   ├── data
+│   │   │   ├── datasources
+│   │   │   ├── models
+│   │   │   └── repositories
+│   │   ├── domain
+│   │   │   ├── entities
+│   │   │   │   ├── product_entity.dart
+│   │   │   │   └── shop_entity.dart
+│   │   │   ├── repositories
+│   │   │   │   └── shop_repository.dart
+│   │   │   └── usecases
+│   │   │       └── get_nearby_shops_usecase.dart
+│   │   └── presentation
+│   │       ├── bloc
+│   │       ├── pages
+│   │       └── widgets
+│   ├── notifications
+│   │   ├── data
+│   │   │   ├── datasources
+│   │   │   ├── models
+│   │   │   └── repositories
+│   │   ├── domain
+│   │   │   ├── entities
+│   │   │   ├── repositories
+│   │   │   └── usecases
+│   │   └── presentation
+│   │       ├── bloc
+│   │       ├── pages
+│   │       └── widgets
+│   ├── orders
+│   │   ├── data
+│   │   │   ├── datasources
+│   │   │   ├── models
+│   │   │   └── repositories
+│   │   ├── domain
+│   │   │   ├── entities
+│   │   │   ├── repositories
+│   │   │   └── usecases
+│   │   └── presentation
+│   │       ├── bloc
+│   │       ├── pages
+│   │       └── widgets
+│   └── seller
+│       ├── data
+│       │   ├── datasources
+│       │   ├── models
+│       │   └── repositories
+│       ├── domain
+│       │   ├── entities
+│       │   ├── repositories
+│       │   └── usecases
+│       └── presentation
+│           ├── bloc
+│           ├── pages
+│           └── widgets
+├── injection_container.dart
+└── main.dart
