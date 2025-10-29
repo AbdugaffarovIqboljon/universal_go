@@ -3,16 +3,16 @@ import 'package:universal_go/core/errors/failures.dart';
 import 'package:universal_go/features/auth/domain/entities/user_entity.dart';
 
 abstract class AuthRepository {
-  Future<Either<Failure, UserEntity>> signInWithEmailAndPassword({
-    required String email,
+  Future<Either<Failure, UserEntity>> signInWithPhoneAndPassword({
+    required String phoneNumber,
     required String password,
   });
   
-  Future<Either<Failure, UserEntity>> signUpWithEmailAndPassword({
-    required String email,
+  Future<Either<Failure, UserEntity>> signUpWithPhoneAndPassword({
+    required String phoneNumber,
     required String password,
-    required String name,
-    required String role,
+    required String firstName,
+    required String lastName,
   });
   
   Future<Either<Failure, UserEntity>> getCurrentUser();

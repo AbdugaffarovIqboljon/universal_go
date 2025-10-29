@@ -1,3 +1,5 @@
+import java.util.Properties
+
 plugins {
     id("com.android.application")
     // START: FlutterFire Configuration
@@ -14,12 +16,21 @@ android {
     ndkVersion = flutter.ndkVersion
 
     compileOptions {
-        sourceCompatibility = JavaVersion.VERSION_11
-        targetCompatibility = JavaVersion.VERSION_11
+        sourceCompatibility = JavaVersion.VERSION_21
+        targetCompatibility = JavaVersion.VERSION_21
     }
 
     kotlinOptions {
-        jvmTarget = JavaVersion.VERSION_11.toString()
+        jvmTarget = "21"
+    }
+
+    val localProps = Properties().apply {
+        val f = rootProject.file("local.properties")
+        if (f.exists()) f.inputStream().use { load(it) }
+    }
+
+    buildFeatures {
+        buildConfig = true
     }
 
     defaultConfig {
@@ -27,18 +38,15 @@ android {
         applicationId = "com.example.universal_go"
         // You can update the following values to match your application needs.
         // For more information, see: https://flutter.dev/to/review-gradle-config.
-        minSdk = maxOf(21, flutter.minSdkVersion)
+        minSdk = maxOf(26, flutter.minSdkVersion)
         targetSdk = flutter.targetSdkVersion
         versionCode = flutter.versionCode
         versionName = flutter.versionName
-    }
 
-    val localProps = java.util.Properties().apply {
-        val f = rootProject.file("local.properties")
-        if (f.exists()) f.inputStream().use { load(it) }
+        val yandexApiKey = localProps.getProperty("YANDEX_API_KEY", "")
+        manifestPlaceholders["YANDEX_API_KEY"] = yandexApiKey
+        buildConfigField("String", "YANDEX_API_KEY", "\"$yandexApiKey\"")
     }
-
-    defaultConfig.manifestPlaceholders["YANDEX_API_KEY"] = localProps.getProperty("YANDEX_API_KEY", "")
 
     buildTypes {
         release {
@@ -47,6 +55,10 @@ android {
             signingConfig = signingConfigs.getByName("debug")
         }
     }
+}
+
+dependencies {
+    implementation("com.yandex.android:maps.mobile:4.22.0-full")
 }
 
 flutter {

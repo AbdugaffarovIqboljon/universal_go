@@ -1,4 +1,5 @@
 lib
+├── app.dart
 ├── config
 │   └── theme
 │       └── app_theme.dart
@@ -21,7 +22,9 @@ lib
 │   │       ├── location_service.dart
 │   │       └── location_service_impl.dart
 │   └── utils
-│       └── helpers.dart
+│       ├── helpers.dart
+│       ├── lat_lng.dart
+│       └── phone_input_formatter.dart
 ├── features
 │   ├── auth
 │   │   ├── data
@@ -46,19 +49,24 @@ lib
 │   │       │   ├── auth_event.dart
 │   │       │   └── auth_state.dart
 │   │       ├── pages
+│   │       │   ├── choose_role_page.dart
 │   │       │   ├── login_page.dart
 │   │       │   ├── register_page.dart
 │   │       │   └── splash_page.dart
 │   │       └── widgets
+│   │           ├── auth_field_label.dart
+│   │           └── auth_textfield.dart
 │   ├── customer
 │   │   ├── data
 │   │   │   ├── datasources
 │   │   │   ├── models
+│   │   │   │   ├── product_model.dart
+│   │   │   │   └── store_model.dart
 │   │   │   └── repositories
 │   │   ├── domain
 │   │   │   ├── entities
 │   │   │   │   ├── product_entity.dart
-│   │   │   │   └── shop_entity.dart
+│   │   │   │   └── store_entity.dart
 │   │   │   ├── repositories
 │   │   │   │   └── shop_repository.dart
 │   │   │   └── usecases
@@ -66,7 +74,14 @@ lib
 │   │   └── presentation
 │   │       ├── bloc
 │   │       ├── pages
+│   │       │   ├── check_out_page.dart
+│   │       │   ├── customer_cart_page.dart
+│   │       │   ├── customer_home_page.dart
+│   │       │   ├── customer_main_page.dart
+│   │       │   ├── customer_profile_page.dart
+│   │       │   └── store_details_page.dart
 │   │       └── widgets
+│   │           └── product_card.dart
 │   ├── notifications
 │   │   ├── data
 │   │   │   ├── datasources
@@ -106,5 +121,20 @@ lib
 │           ├── bloc
 │           ├── pages
 │           └── widgets
+├── firebase_options.dart
 ├── injection_container.dart
-└── main.dart
+├── main.dart
+└── shared
+    ├── enums
+    │   └── user_role.dart
+    ├── extensions
+    │   ├── context_extension.dart
+    │   └── string_extension.dart
+    ├── mixins
+    │   └── validation_mixin.dart
+    ├── styles
+    │   └── app_colors.dart
+    ├── utils
+    │   └── app_formatter.dart
+    └── widgets
+        └── app_button.dart

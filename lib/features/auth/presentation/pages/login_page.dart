@@ -1,10 +1,15 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
+import 'package:universal_go/core/utils/phone_input_formatter.dart';
+import 'package:universal_go/features/auth/presentation/widgets/auth_textfield.dart';
+import 'package:universal_go/shared/mixins/validation_mixin.dart';
 import 'package:universal_go/features/auth/presentation/bloc/auth_bloc.dart';
-import 'package:universal_go/features/auth/presentation/bloc/auth_event.dart';
 import 'package:universal_go/features/auth/presentation/bloc/auth_state.dart';
 import 'package:universal_go/core/navigation/app_routes.dart';
+import 'package:universal_go/features/auth/presentation/widgets/auth_field_label.dart';
+import 'package:universal_go/shared/widgets/app_button.dart';
 
 class LoginPage extends StatefulWidget {
   const LoginPage({super.key});
@@ -13,26 +18,24 @@ class LoginPage extends StatefulWidget {
   State<LoginPage> createState() => _LoginPageState();
 }
 
-class _LoginPageState extends State<LoginPage> {
+class _LoginPageState extends State<LoginPage> with ValidationMixin {
   final _formKey = GlobalKey<FormState>();
-  final _emailController = TextEditingController();
+  final _phoneController = TextEditingController(text: '+998 ');
   final _passwordController = TextEditingController();
-  bool _obscurePassword = true;
+  final _obscurePasswordNotifier = ValueNotifier<bool>(true);
 
   @override
   void dispose() {
-    _emailController.dispose();
+    _phoneController.dispose();
     _passwordController.dispose();
+    _obscurePasswordNotifier.dispose();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Sign In'),
-        centerTitle: true,
-      ),
+      backgroundColor: Theme.of(context).colorScheme.surface,
       body: BlocListener<AuthBloc, AuthState>(
         listener: (context, state) {
           if (state is AuthSuccess) {
@@ -40,125 +43,176 @@ class _LoginPageState extends State<LoginPage> {
               Navigator.pushReplacementNamed(context, AppRoutes.customerHome);
             } else if (state.user.role == 'seller') {
               Navigator.pushReplacementNamed(
-                  context, AppRoutes.sellerDashboard, );
+                context,
+                AppRoutes.sellerDashboard,
+              );
             }
           } else if (state is AuthFailure) {
             ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(content: Text(state.message)),
+              SnackBar(
+                content: Text(state.message),
+                backgroundColor: Theme.of(context).colorScheme.error,
+              ),
             );
           }
         },
-        child: Padding(
-          padding: EdgeInsets.all(16.w),
-          child: Form(
-            key: _formKey,
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Image.asset(
-                  "assets/images/img_universal_go_logo.png",
-                  width: 100.w,
-                  height: 100.h, 
-                ),
-                SizedBox(height: 32.h),
-                Text(
-                  'Welcome to UniversalGo',
-                  style: TextStyle(
-                    fontSize: 24.sp,
-                    fontWeight: FontWeight.bold,
+        child: SafeArea(
+          child: Center(
+            child: SingleChildScrollView(
+              padding: EdgeInsets.symmetric(horizontal: 24.w),
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  // Logo
+                  Image.asset(
+                    "assets/images/img_universal_go_logo.png",
+                    width: 100.w,
+                    height: 100.h,
                   ),
-                ),
-                SizedBox(height: 8.h),
-                Text(
-                  'Sign in to continue',
-                  style: TextStyle(
-                    fontSize: 16.sp,
-                    color: Colors.grey,
-                  ),
-                ),
-                SizedBox(height: 32.h),
-                TextFormField(
-                  controller: _emailController,
-                  keyboardType: TextInputType.emailAddress,
-                  decoration: const InputDecoration(
-                    labelText: 'Email',
-                    prefixIcon: Icon(Icons.email),
-                  ),
-                  validator: (value) {
-                    if (value == null || value.isEmpty) {
-                      return 'Please enter your email';
-                    }
-                    if (!value.contains('@')) {
-                      return 'Please enter a valid email';
-                    }
-                    return null;
-                  },
-                ),
-                SizedBox(height: 16.h),
-                TextFormField(
-                  controller: _passwordController,
-                  obscureText: _obscurePassword,
-                  decoration: InputDecoration(
-                    labelText: 'Password',
-                    prefixIcon: const Icon(Icons.lock),
-                    suffixIcon: IconButton(
-                      icon: Icon(
-                        _obscurePassword
-                            ? Icons.visibility
-                            : Icons.visibility_off,
-                      ),
-                      onPressed: () {
-                        setState(() {
-                          _obscurePassword = !_obscurePassword;
-                        });
-                      },
+                  SizedBox(height: 32.h),
+
+                  // Welcome Back title
+                  Text(
+                    'Welcome Back',
+                    style: TextStyle(
+                      fontSize: 28.sp,
+                      fontWeight: FontWeight.bold,
+                      letterSpacing: -0.5,
                     ),
                   ),
-                  validator: (value) {
-                    if (value == null || value.isEmpty) {
-                      return 'Please enter your password';
-                    }
-                    if (value.length < 6) {
-                      return 'Password must be at least 6 characters';
-                    }
-                    return null;
-                  },
-                ),
-                SizedBox(height: 24.h),
-                BlocBuilder<AuthBloc, AuthState>(
-                  builder: (context, state) {
-                    return SizedBox(
-                      width: double.infinity,
-                      height: 50.h,
-                      child: ElevatedButton(
-                        onPressed: state is AuthLoading
-                            ? null
-                            : () {
-                                if (_formKey.currentState!.validate()) {
-                                  context.read<AuthBloc>().add(
-                                        SignInRequested(
-                                          email: _emailController.text.trim(),
-                                          password: _passwordController.text,
-                                        ),
-                                      );
-                                }
-                              },
-                        child: state is AuthLoading
-                            ? const CircularProgressIndicator(
-                                color: Colors.white)
-                            : const Text('Sign In'),
+                  SizedBox(height: 8.h),
+
+                  // Subtitle
+                  Text(
+                    'Enter your credentials to access your account',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      fontSize: 14.sp,
+                      color: Theme.of(context).colorScheme.onSurface.withOpacity(0.6),
+                      height: 1.4,
+                    ),
+                  ),
+                  SizedBox(height: 32.h),
+
+                  // Card Container with Shadow
+                  Container(
+                    decoration: BoxDecoration(
+                      color: Theme.of(context).colorScheme.surface,
+                      borderRadius: BorderRadius.circular(20.r),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Theme.of(context).colorScheme.primary.withOpacity(0.08),
+                          blurRadius: 24,
+                          offset: const Offset(0, 8),
+                          spreadRadius: 0,
+                        ),
+                      ],
+                    ),
+                    padding: EdgeInsets.all(24.w),
+                    child: Form(
+                      key: _formKey,
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          // Phone Field
+                          const FieldLabel(label: 'Phone Number'),
+                          SizedBox(height: 8.h),
+                          AuthTextField(
+                            controller: _phoneController,
+                            hintText: '+998 XX XXX XX XX',
+                            keyboardType: TextInputType.phone,
+                            inputFormatters: [
+                              UzbekPhoneInputFormatter(),
+                              LengthLimitingTextInputFormatter(17),
+                            ],
+                            validator: validateUzbekPhone,
+                            maxLength: 17,
+                          ),
+                          SizedBox(height: 20.h),
+
+                          // Password Field
+                          const FieldLabel(label: 'Password'),
+                          SizedBox(height: 8.h),
+                          AuthPasswordField(
+                            controller: _passwordController,
+                            hintText: '••••••••',
+                            obscureTextNotifier: _obscurePasswordNotifier,
+                            validator: (value) {
+                              if (value == null || value.isEmpty) {
+                                return 'Please enter your password';
+                              }
+                              if (value.length < 6) {
+                                return 'Password must be at least 6 characters';
+                              }
+                              return null;
+                            },
+                          ),
+                          SizedBox(height: 24.h),
+
+                          // Sign In Button
+                          BlocBuilder<AuthBloc, AuthState>(
+                            builder: (context, state) {
+                              final isLoading = state is AuthLoading;
+                              return GradientButton(
+                                onPressed: isLoading
+                                    ? null
+                                    : () {
+                                        Navigator.pushReplacementNamed(
+                                          context,
+                                          AppRoutes.chooseRole,
+                                        );
+
+                                        // if (_formKey.currentState!.validate()) {
+                                        //   final cleanPhone = _phoneController.text
+                                        //       .replaceAll(RegExp(r'\s'), '');
+
+                                        //   context.read<AuthBloc>().add(
+                                        //         SignInRequested(
+                                        //           phoneNumber: cleanPhone,
+                                        //           password: _passwordController.text,
+                                        //         ),
+                                        //       );
+                                        // }
+                                      },
+                                title: 'Sign In',
+                                isLoading: isLoading,
+                              );
+                            },
+                          ),
+                        ],
                       ),
-                    );
-                  },
-                ),
-                SizedBox(height: 16.h),
-                TextButton(
-                  onPressed: () {
-                    Navigator.pushNamed(context, AppRoutes.register);
-                  },
-                  child: const Text('Don\'t have an account? Sign up'),
-                ),
-              ],
+                    ),
+                  ),
+                  SizedBox(height: 24.h),
+
+                  // Sign Up Link
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Text(
+                        'Don\'t have an account? ',
+                        style: TextStyle(
+                          fontSize: 14.sp,
+                          color: Theme.of(context).colorScheme.onSurface.withOpacity(0.6),
+                        ),
+                      ),
+                      GestureDetector(
+                        onTap: () {
+                          Navigator.pushNamed(context, AppRoutes.register);
+                        },
+                        child: Text(
+                          'Sign up',
+                          style: TextStyle(
+                            fontSize: 14.sp,
+                            color: Theme.of(context).colorScheme.primary,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
             ),
           ),
         ),

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
+import 'package:provider/provider.dart';
 import 'package:universal_go/features/auth/presentation/bloc/auth_bloc.dart';
 import 'package:universal_go/injection_container.dart';
 import 'package:universal_go/config/theme/app_theme.dart';
@@ -11,6 +12,7 @@ import 'package:universal_go/features/auth/domain/usecases/get_current_user_usec
 import 'package:universal_go/features/auth/domain/usecases/sign_in_usecase.dart';
 import 'package:universal_go/features/auth/domain/usecases/sign_out_usecase.dart';
 import 'package:universal_go/features/auth/domain/usecases/sign_up_usecase.dart';
+import 'package:universal_go/core/providers/theme_provider.dart';
 
 
 class UniversalGoApp extends StatelessWidget {
@@ -33,12 +35,18 @@ class UniversalGoApp extends StatelessWidget {
         designSize: const Size(375, 812),
         minTextAdapt: true,
         builder: (context, child) {
-          return MaterialApp(
-            title: 'Universal Go',
-            theme: AppTheme.lightTheme,
-            onGenerateRoute: AppRouter.generateRoute,
-            initialRoute: AppRoutes.splash,
-            debugShowCheckedModeBanner: false,
+          return Consumer<ThemeProvider>(
+            builder: (context, themeProvider, child) {
+              return MaterialApp(
+                title: 'Universal Go',
+                theme: lightTheme,
+                darkTheme: darkTheme,
+                themeMode: themeProvider.themeMode,
+                onGenerateRoute: AppRouter.generateRoute,
+                initialRoute: AppRoutes.splash,
+                debugShowCheckedModeBanner: false,
+              );
+            },
           );
         },
       ),

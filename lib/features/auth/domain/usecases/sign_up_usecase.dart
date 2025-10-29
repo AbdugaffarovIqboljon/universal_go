@@ -12,28 +12,28 @@ class SignUpUseCase implements UseCase<UserEntity, SignUpParams> {
 
   @override
   Future<Either<Failure, UserEntity>> call(SignUpParams params) async {
-    return await repository.signUpWithEmailAndPassword(
-      email: params.email,
+    return await repository.signUpWithPhoneAndPassword(
+      phoneNumber: params.phoneNumber,
       password: params.password,
-      name: params.name,
-      role: params.role,
+      firstName: params.firstName,
+      lastName: params.lastName,
     );
   }
 }
 
 class SignUpParams extends Equatable {
-  final String email;
+  final String phoneNumber;
   final String password;
-  final String name;
-  final String role;
+  final String firstName;
+  final String lastName;
 
   const SignUpParams({
-    required this.email,
+    required this.phoneNumber,
     required this.password,
-    required this.name,
-    required this.role,
+    required this.firstName,
+    required this.lastName,
   });
 
   @override
-  List<Object> get props => [email, password, name, role];
+  List<Object> get props => [phoneNumber, password, firstName, lastName];
 }

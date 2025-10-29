@@ -2,12 +2,13 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:hive_flutter/hive_flutter.dart';
+import 'package:provider/provider.dart';
 import 'package:universal_go/app.dart';
 import 'package:universal_go/injection_container.dart';
+import 'package:universal_go/core/providers/theme_provider.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
-
   // Initialize Firebase (with error handling)
   try {
     await Firebase.initializeApp();
@@ -23,5 +24,10 @@ void main() async {
   // Configure dependencies
   await configureDependencies();
 
-  runApp(const UniversalGoApp());
+  runApp(
+    ChangeNotifierProvider(
+      create: (context) => ThemeProvider()..initializeTheme(),
+      child: const UniversalGoApp(),
+    ),
+  );
 }

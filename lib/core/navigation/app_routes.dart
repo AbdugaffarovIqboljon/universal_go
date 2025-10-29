@@ -2,7 +2,13 @@ class AppRoutes {
   static const String splash = '/';
   static const String login = '/login';
   static const String register = '/register';
+  static const String chooseRole = '/choose-role';
   static const String customerHome = '/customer/home';
+  static const String customerMain = '/customer/main';
+  static const String customerCart = '/customer/cart';
+  static const String customerCheckout = '/customer/checkout';
+  static const String customerOrderStatus = '/customer/order-status';
+  static const String customerProfile = '/customer/profile';
   static const String sellerDashboard = '/seller/dashboard';
   static const String storeDetails = '/store/details';
   static const String cart = '/cart';

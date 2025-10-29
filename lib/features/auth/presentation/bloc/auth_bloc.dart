@@ -24,9 +24,12 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
     on<SignOutRequested>(_onSignOutRequested);
   }
 
-  Future<void> _onAuthStarted(AuthStarted event, Emitter<AuthState> emit) async {
+  Future<void> _onAuthStarted(
+    AuthStarted event,
+    Emitter<AuthState> emit,
+  ) async {
     emit(AuthLoading());
-    
+
     final result = await getCurrentUserUseCase();
     result.fold(
       (failure) => emit(AuthUnauthenticated()),
@@ -39,12 +42,12 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
     Emitter<AuthState> emit,
   ) async {
     emit(AuthLoading());
-    
+
     final result = await signInUseCase(SignInParams(
-      email: event.email,
+      phoneNumber: event.phoneNumber,
       password: event.password,
     ));
-    
+
     result.fold(
       (failure) => emit(AuthFailure(message: failure.message)),
       (user) => emit(AuthSuccess(user: user)),
@@ -56,14 +59,16 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
     Emitter<AuthState> emit,
   ) async {
     emit(AuthLoading());
-    
-    final result = await signUpUseCase(SignUpParams(
-      email: event.email,
-      password: event.password,
-      name: event.name,
-      role: event.role,
-    ));
-    
+
+    final result = await signUpUseCase(
+      SignUpParams(
+        phoneNumber: event.phoneNumber,
+        password: event.password,
+        firstName: event.firstName,
+        lastName: event.lastName,
+      ),
+    );
+
     result.fold(
       (failure) => emit(AuthFailure(message: failure.message)),
       (user) => emit(AuthSuccess(user: user)),
@@ -75,7 +80,7 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
     Emitter<AuthState> emit,
   ) async {
     emit(AuthLoading());
-    
+
     final result = await signOutUseCase();
     result.fold(
       (failure) => emit(AuthFailure(message: failure.message)),

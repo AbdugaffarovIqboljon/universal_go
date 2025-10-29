@@ -12,22 +12,22 @@ class SignInUseCase implements UseCase<UserEntity, SignInParams> {
 
   @override
   Future<Either<Failure, UserEntity>> call(SignInParams params) async {
-    return await repository.signInWithEmailAndPassword(
-      email: params.email,
+    return await repository.signInWithPhoneAndPassword(
+      phoneNumber: params.phoneNumber,
       password: params.password,
     );
   }
 }
 
 class SignInParams extends Equatable {
-  final String email;
+  final String phoneNumber;
   final String password;
 
   const SignInParams({
-    required this.email,
+    required this.phoneNumber,
     required this.password,
   });
 
   @override
-  List<Object> get props => [email, password];
+  List<Object> get props => [phoneNumber, password];
 }

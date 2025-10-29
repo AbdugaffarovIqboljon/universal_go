@@ -14,23 +14,24 @@ class AuthRepositoryImpl implements AuthRepository {
   AuthRepositoryImpl({
     required FirebaseAuth auth,
     required FirebaseFirestore firestore,
-  }) : _auth = auth, _firestore = firestore;
+  })  : _auth = auth,
+        _firestore = firestore;
 
   @override
-  Future<Either<Failure, UserEntity>> signInWithEmailAndPassword({
-    required String email,
+  Future<Either<Failure, UserEntity>> signInWithPhoneAndPassword({
+    required String phoneNumber,
     required String password,
   }) async {
     try {
       final credential = await _auth.signInWithEmailAndPassword(
-        email: email,
+        email: phoneNumber,
         password: password,
       );
-      
+
       if (credential.user == null) {
         return const Left(AuthFailure('Sign in failed'));
       }
-      
+
       final user = await _getUserFromFirestore(credential.user!.uid);
       return Right(user);
     } on FirebaseAuthException catch (e) {
@@ -41,36 +42,36 @@ class AuthRepositoryImpl implements AuthRepository {
   }
 
   @override
-  Future<Either<Failure, UserEntity>> signUpWithEmailAndPassword({
-    required String email,
+  Future<Either<Failure, UserEntity>> signUpWithPhoneAndPassword({
+    required String phoneNumber,
     required String password,
-    required String name,
-    required String role,
+    required String firstName,
+    required String lastName,
   }) async {
     try {
       final credential = await _auth.createUserWithEmailAndPassword(
-        email: email,
+        email: phoneNumber,
         password: password,
       );
-      
+
       if (credential.user == null) {
         return const Left(AuthFailure('Sign up failed'));
       }
-      
+
       final user = UserModel(
-        id: credential.user!.uid,
-        email: email,
-        name: name,
-        role: role,
+        id: credential.user?.uid ?? '',
+        phoneNumber: phoneNumber,
+        firstName: firstName,
+        lastName: lastName,
         createdAt: DateTime.now(),
         updatedAt: DateTime.now(),
       );
-      
+
       await _firestore
           .collection('users')
           .doc(credential.user!.uid)
           .set(user.toJson());
-      
+
       return Right(user);
     } on FirebaseAuthException catch (e) {
       return Left(AuthFailure(e.message ?? 'Registration failed'));
@@ -86,7 +87,7 @@ class AuthRepositoryImpl implements AuthRepository {
       if (user == null) {
         return const Left(AuthFailure('No user signed in'));
       }
-      
+
       final userEntity = await _getUserFromFirestore(user.uid);
       return Right(userEntity);
     } catch (e) {
@@ -115,11 +116,13 @@ class AuthRepositoryImpl implements AuthRepository {
       final updateData = <String, dynamic>{
         'updatedAt': Timestamp.fromDate(DateTime.now()),
       };
-      
+
       if (name != null) updateData['name'] = name;
       if (phoneNumber != null) updateData['phoneNumber'] = phoneNumber;
-      if (profileImageUrl != null) updateData['profileImageUrl'] = profileImageUrl;
-      
+      if (profileImageUrl != null) {
+        updateData['profileImageUrl'] = profileImageUrl;
+      }
+
       await _firestore.collection('users').doc(userId).update(updateData);
       return const Right(null);
     } catch (e) {

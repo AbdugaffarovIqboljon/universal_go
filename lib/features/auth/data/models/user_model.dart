@@ -4,20 +4,22 @@ import 'package:universal_go/features/auth/domain/entities/user_entity.dart';
 class UserModel extends UserEntity {
   const UserModel({
     required super.id,
-    required super.email,
-    required super.name,
-    required super.role,
-    super.phoneNumber,
-    super.profileImageUrl,
+    required super.firstName,
+    required super.lastName, 
+    required super.phoneNumber,
     required super.createdAt,
     required super.updatedAt,
+    super.email,
+    super.role,
+    super.profileImageUrl, 
   });
 
   factory UserModel.fromJson(Map<String, dynamic> json) {
     return UserModel(
       id: json['id'] ?? '',
       email: json['email'] ?? '',
-      name: json['name'] ?? '',
+      firstName: json['firstName'] ?? '',
+      lastName: json['lastName'] ?? '',
       role: json['role'] ?? '',
       phoneNumber: json['phoneNumber'],
       profileImageUrl: json['profileImageUrl'],
@@ -30,7 +32,7 @@ class UserModel extends UserEntity {
     return {
       'id': id,
       'email': email,
-      'name': name,
+      'name': firstName,
       'role': role,
       'phoneNumber': phoneNumber,
       'profileImageUrl': profileImageUrl,
@@ -43,7 +45,8 @@ class UserModel extends UserEntity {
     return UserModel(
       id: entity.id,
       email: entity.email,
-      name: entity.name,
+      firstName: entity.firstName,
+      lastName: entity.lastName,
       role: entity.role,
       phoneNumber: entity.phoneNumber,
       profileImageUrl: entity.profileImageUrl,
