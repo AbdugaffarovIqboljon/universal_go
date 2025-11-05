@@ -94,7 +94,7 @@ class RoleCard extends StatelessWidget {
           if (title == 'Continue as Customer') {
             Navigator.pushReplacementNamed(context, AppRoutes.customerMain);
           } else if (title == 'Continue as Shop Owner') {
-            Navigator.pushReplacementNamed(context, AppRoutes.sellerDashboard);
+            Navigator.pushReplacementNamed(context, AppRoutes.sellerMain);
           }
         },
         borderRadius: BorderRadius.circular(20.r),

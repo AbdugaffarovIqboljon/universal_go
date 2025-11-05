@@ -12,6 +12,7 @@ import 'package:universal_go/features/auth/domain/usecases/get_current_user_usec
 import 'package:universal_go/features/auth/domain/usecases/sign_in_usecase.dart';
 import 'package:universal_go/features/auth/domain/usecases/sign_out_usecase.dart';
 import 'package:universal_go/features/auth/domain/usecases/sign_up_usecase.dart';
+import 'package:universal_go/features/cart/presentation/bloc/cart_bloc.dart';
 import 'package:universal_go/core/providers/theme_provider.dart';
 
 
@@ -29,6 +30,9 @@ class UniversalGoApp extends StatelessWidget {
             getCurrentUserUseCase: GetCurrentUserUseCase(sl<AuthRepositoryImpl>()),
             signOutUseCase: SignOutUseCase(sl<AuthRepositoryImpl>()),
           ),
+        ),
+        BlocProvider<CartBloc>(
+          create: (context) => sl<CartBloc>(),
         ),
       ],
       child: ScreenUtilInit(

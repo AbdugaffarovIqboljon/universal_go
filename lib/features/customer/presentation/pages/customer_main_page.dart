@@ -1,18 +1,23 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
+import 'package:universal_go/features/cart/presentation/pages/customer_cart_page.dart';
 import 'customer_home_page.dart';
-import 'customer_cart_page.dart';
 import 'customer_profile_page.dart';
 
 class CustomerMainPage extends StatefulWidget {
-  const CustomerMainPage({super.key});
+  final int? initialTab;
+
+  const CustomerMainPage({
+    super.key,
+    this.initialTab,
+  });
 
   @override
   State<CustomerMainPage> createState() => _CustomerMainPageState();
 }
 
 class _CustomerMainPageState extends State<CustomerMainPage> {
-  int _currentIndex = 0;
+  late int _currentIndex;
   late PageController _pageController;
 
   final List<Widget> _pages = [
@@ -24,6 +29,7 @@ class _CustomerMainPageState extends State<CustomerMainPage> {
   @override
   void initState() {
     super.initState();
+    _currentIndex = widget.initialTab ?? 0;
     _pageController = PageController(initialPage: _currentIndex);
   }
 
@@ -71,8 +77,8 @@ class _CustomerMainPageState extends State<CustomerMainPage> {
             label: 'Home',
           ),
           BottomNavigationBarItem(
-            icon: Icon(Icons.shopping_cart_outlined),
-            activeIcon: Icon(Icons.shopping_cart),
+            icon: Icon(Icons.shopping_bag_outlined),
+            activeIcon: Icon(Icons.shopping_bag_rounded),
             label: 'Cart',
           ),
           BottomNavigationBarItem(

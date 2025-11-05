@@ -27,6 +27,9 @@ class AppConstants {
   // Commission (1.5%)
   static const double commissionRate = 0.015;
   
+  // Price Markup (7.5% increase when adding to cart)
+  static const double priceMarkupRate = 0.075;
+  
   // Map
   static const double defaultZoom = 15.0;
   static const double maxZoom = 20.0;

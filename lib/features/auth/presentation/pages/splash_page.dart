@@ -109,7 +109,7 @@ class _SplashPageState extends State<SplashPage> with TickerProviderStateMixin {
               Navigator.pushReplacementNamed(context, AppRoutes.customerHome);
             } else if (state.user.role == 'seller') {
               Navigator.pushReplacementNamed(
-                  context, AppRoutes.sellerDashboard);
+                  context, AppRoutes.sellerHome);
             }
           } else if (state is AuthUnauthenticated) {
             Navigator.pushReplacementNamed(context, AppRoutes.login);

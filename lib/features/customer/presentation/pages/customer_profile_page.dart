@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:provider/provider.dart';
 import 'package:universal_go/core/providers/theme_provider.dart';
+import 'package:universal_go/shared/widgets/theme_toggle_bottom_sheet.dart';
 
 class CustomerProfilePage extends StatelessWidget {
   const CustomerProfilePage({super.key});
@@ -26,36 +27,32 @@ class CustomerProfilePage extends StatelessWidget {
       ),
       body: CustomScrollView(
         slivers: [
-          // Scrollable Content
           SliverPadding(
             padding: EdgeInsets.symmetric(horizontal: 16.w, vertical: 12.h),
             sliver: SliverList(
               delegate: SliverChildListDelegate(
                 [
                   // Account Section
-                  ProfileMenuSection(
+                  const ProfileMenuSection(
                     title: 'Account',
                     items: [
                       ProfileMenuItem(
                         title: 'Personal Information',
                         icon: Icons.person_outline,
-                        onTap: () {
-                          // TODO: Navigate to personal info
-                        },
+                        isFirst: true,
+                        isLast: false,
                       ),
                       ProfileMenuItem(
                         title: 'Addresses',
                         icon: Icons.location_on_outlined,
-                        onTap: () {
-                          // TODO: Navigate to addresses
-                        },
+                        isFirst: false,
+                        isLast: false,
                       ),
                       ProfileMenuItem(
                         title: 'Payment Methods',
                         icon: Icons.payment_outlined,
-                        onTap: () {
-                          // TODO: Navigate to payment methods
-                        },
+                        isFirst: false,
+                        isLast: true,
                       ),
                     ],
                   ),
@@ -63,22 +60,20 @@ class CustomerProfilePage extends StatelessWidget {
                   SizedBox(height: 16.h),
 
                   // Orders Section
-                  ProfileMenuSection(
+                  const ProfileMenuSection(
                     title: 'Orders',
                     items: [
                       ProfileMenuItem(
                         title: 'Order History',
                         icon: Icons.history,
-                        onTap: () {
-                          // TODO: Navigate to order history
-                        },
+                        isFirst: true,
+                        isLast: false,
                       ),
                       ProfileMenuItem(
                         title: 'Track Orders',
                         icon: Icons.local_shipping_outlined,
-                        onTap: () {
-                          // TODO: Navigate to track orders
-                        },
+                        isFirst: false,
+                        isLast: true,
                       ),
                     ],
                   ),
@@ -90,10 +85,12 @@ class CustomerProfilePage extends StatelessWidget {
                     title: 'Settings',
                     items: [
                       Consumer<ThemeProvider>(
-                        builder: (context, themeProvider, child) {
+                        builder: (context, themeProvider, _) {
                           return ProfileMenuItem(
                             title: 'Theme',
                             icon: _getThemeIcon(themeProvider.themeMode),
+                            isFirst: true,
+                            isLast: false,
                             trailing: Row(
                               mainAxisSize: MainAxisSize.min,
                               children: [
@@ -101,7 +98,8 @@ class CustomerProfilePage extends StatelessWidget {
                                   themeProvider.themeModeString,
                                   style: TextStyle(
                                     fontSize: 14.sp,
-                                    color: Theme.of(context).colorScheme.primary,
+                                    color:
+                                        Theme.of(context).colorScheme.primary,
                                     fontWeight: FontWeight.w500,
                                   ),
                                 ),
@@ -116,13 +114,15 @@ class CustomerProfilePage extends StatelessWidget {
                                 ),
                               ],
                             ),
-                            onTap: () => _showThemeBottomSheet(context, themeProvider),
+                            onTap: () => ThemeBottomSheet.show(context),
                           );
                         },
                       ),
                       ProfileMenuItem(
                         title: 'Language',
                         icon: Icons.language_outlined,
+                        isFirst: false,
+                        isLast: false,
                         trailing: Text(
                           'English',
                           style: TextStyle(
@@ -134,16 +134,12 @@ class CustomerProfilePage extends StatelessWidget {
                             fontWeight: FontWeight.w500,
                           ),
                         ),
-                        onTap: () {
-                          // TODO: Navigate to language settings
-                        },
                       ),
-                      ProfileMenuItem(
+                      const ProfileMenuItem(
                         title: 'Notifications',
                         icon: Icons.notifications_outlined,
-                        onTap: () {
-                          // TODO: Navigate to notification settings
-                        },
+                        isFirst: false,
+                        isLast: true,
                       ),
                     ],
                   ),
@@ -151,22 +147,20 @@ class CustomerProfilePage extends StatelessWidget {
                   SizedBox(height: 16.h),
 
                   // Legal Section
-                  ProfileMenuSection(
+                  const ProfileMenuSection(
                     title: 'Legal',
                     items: [
                       ProfileMenuItem(
                         title: 'FAQ',
                         icon: Icons.help_outline,
-                        onTap: () {
-                          // TODO: Navigate to FAQ
-                        },
+                        isFirst: true,
+                        isLast: false,
                       ),
                       ProfileMenuItem(
                         title: 'Privacy Policy',
                         icon: Icons.privacy_tip_outlined,
-                        onTap: () {
-                          // TODO: Navigate to privacy policy
-                        },
+                        isFirst: false,
+                        isLast: true,
                       ),
                     ],
                   ),
@@ -177,9 +171,7 @@ class CustomerProfilePage extends StatelessWidget {
                   SizedBox(
                     width: double.infinity,
                     child: OutlinedButton.icon(
-                      onPressed: () {
-                        _showLogoutDialog(context);
-                      },
+                      onPressed: () => LogoutDialog.show(context),
                       icon: Icon(Icons.logout, size: 20.sp),
                       label: const Text('Logout'),
                       style: OutlinedButton.styleFrom(
@@ -207,7 +199,7 @@ class CustomerProfilePage extends StatelessWidget {
     );
   }
 
-  IconData _getThemeIcon(ThemeMode themeMode) {
+  static IconData _getThemeIcon(ThemeMode themeMode) {
     switch (themeMode) {
       case ThemeMode.light:
         return Icons.light_mode_outlined;
@@ -217,225 +209,7 @@ class CustomerProfilePage extends StatelessWidget {
         return Icons.brightness_auto_outlined;
     }
   }
-
-  void _showThemeBottomSheet(BuildContext context, ThemeProvider themeProvider) {
-    showModalBottomSheet(
-      context: context,
-      backgroundColor: Colors.transparent,
-      isScrollControlled: true,
-      builder: (context) {
-        void handleThemeSelection(ThemeMode mode) {
-          themeProvider.setThemeMode(mode);
-          Navigator.of(context).pop();
-        }
-
-        return Container(
-          decoration: BoxDecoration(
-            color: Theme.of(context).colorScheme.surface,
-            borderRadius: BorderRadius.vertical(
-              top: Radius.circular(24.r),
-            ),
-          ),
-          padding: EdgeInsets.symmetric(horizontal: 20.w, vertical: 24.h),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              // Handle bar
-              Center(
-                child: Container(
-                  width: 40.w,
-                  height: 4.h,
-                  decoration: BoxDecoration(
-                    color: Theme.of(context)
-                        .colorScheme
-                        .onSurface
-                        .withValues(alpha: 0.2),
-                    borderRadius: BorderRadius.circular(2.r),
-                  ),
-                ),
-              ),
-
-              SizedBox(height: 20.h),
-
-              // Title
-              Text(
-                'Choose Theme',
-                style: TextStyle(
-                  fontSize: 22.sp,
-                  fontWeight: FontWeight.bold,
-                  color: Theme.of(context).colorScheme.onSurface,
-                ),
-              ),
-
-              SizedBox(height: 8.h),
-
-              Text(
-                'Select your preferred theme mode',
-                style: TextStyle(
-                  fontSize: 14.sp,
-                  color: Theme.of(context)
-                      .colorScheme
-                      .onSurface
-                      .withValues(alpha: 0.6),
-                ),
-              ),
-
-              SizedBox(height: 24.h),
-
-              // Theme Options
-              RadioGroup<ThemeMode>(
-                value: themeProvider.themeMode,
-                onChanged: (ThemeMode? newMode) {
-                  if (newMode != null) {
-                    handleThemeSelection(newMode);
-                  }
-                },
-                child: Column(
-                  children: [
-                    ThemeOptionTile(
-                      themeMode: ThemeMode.light,
-                      icon: Icons.light_mode_outlined,
-                      title: 'Light',
-                      description: 'Always use light theme',
-                    ),
-
-                    SizedBox(height: 12.h),
-
-                    ThemeOptionTile(
-                      themeMode: ThemeMode.dark,
-                      icon: Icons.dark_mode_outlined,
-                      title: 'Dark',
-                      description: 'Always use dark theme',
-                    ),
-
-                    SizedBox(height: 12.h),
-
-                    ThemeOptionTile(
-                      themeMode: ThemeMode.system,
-                      icon: Icons.brightness_auto_outlined,
-                      title: 'System',
-                      description: 'Follow system setting',
-                    ),
-                  ],
-                ),
-              ),
-
-              SizedBox(height: 24.h),
-            ],
-          ),
-        );
-      },
-    );
-  }
-
-  void _showLogoutDialog(BuildContext context) {
-    showDialog(
-      context: context,
-      builder: (BuildContext dialogContext) {
-        return AlertDialog(
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(20.r),
-          ),
-          title: const Text('Logout'),
-          content: const Text('Are you sure you want to logout?'),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(dialogContext).pop(),
-              child: const Text('Cancel'),
-            ),
-            TextButton(
-              onPressed: () {
-                Navigator.of(dialogContext).pop();
-                // TODO: Implement logout logic
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(
-                    content: const Text('Logged out successfully'),
-                    behavior: SnackBarBehavior.floating,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12.r),
-                    ),
-                  ),
-                );
-              },
-              child: Text(
-                'Logout',
-                style: TextStyle(
-                  color: Theme.of(context).colorScheme.error,
-                ),
-              ),
-            ),
-          ],
-        );
-      },
-    );
-  }
 }
-
-// Collapsed State: Compact Profile Title
-
-class CollapsedProfileTitle extends StatelessWidget {
-  final String name;
-
-  const CollapsedProfileTitle({
-    super.key,
-    required this.name,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        // Only show when collapsed (when height is constrained)
-        final isCollapsed = constraints.maxHeight < 70;
-
-        if (!isCollapsed) {
-          return const SizedBox.shrink();
-        }
-
-        return Row(
-          children: [
-            Container(
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                border: Border.all(
-                  color: Theme.of(context)
-                      .colorScheme
-                      .surface
-                      .withValues(alpha: 0.3),
-                  width: 2.w,
-                ),
-              ),
-              child: CircleAvatar(
-                radius: 16.r,
-                backgroundColor: Theme.of(context)
-                    .colorScheme
-                    .surface
-                    .withValues(alpha: 0.5),
-                child: Icon(
-                  Icons.person,
-                  size: 18.sp,
-                  color: Theme.of(context).colorScheme.primary,
-                ),
-              ),
-            ),
-            SizedBox(width: 10.w),
-            Text(
-              name,
-              style: TextStyle(
-                fontSize: 16.sp,
-                fontWeight: FontWeight.w600,
-                color: Theme.of(context).colorScheme.surface,
-              ),
-            ),
-          ],
-        );
-      },
-    );
-  }
-}
-
-// Expanded State: Full Profile Header
 
 class ProfileHeaderSection extends StatelessWidget {
   final String name;
@@ -529,20 +303,26 @@ class ProfileHeaderSection extends StatelessWidget {
           ),
 
           // Edit Profile Button
-          Container(
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              color:
-                  Theme.of(context).colorScheme.surface.withValues(alpha: 0.15),
-            ),
-            child: IconButton(
-              onPressed: () {
+          Material(
+            color:
+                Theme.of(context).colorScheme.surface.withValues(alpha: 0.15),
+            shape: const CircleBorder(),
+            child: InkWell(
+              onTap: () {
                 // TODO: Navigate to edit profile
               },
-              icon: Icon(
-                Icons.edit,
-                size: 20.sp,
-                color: Theme.of(context).colorScheme.surface,
+              customBorder: const CircleBorder(),
+              splashColor:
+                  Theme.of(context).colorScheme.surface.withValues(alpha: 0.3),
+              highlightColor:
+                  Theme.of(context).colorScheme.surface.withValues(alpha: 0.2),
+              child: Padding(
+                padding: EdgeInsets.all(12.w),
+                child: Icon(
+                  Icons.edit,
+                  size: 20.sp,
+                  color: Theme.of(context).colorScheme.surface,
+                ),
               ),
             ),
           ),
@@ -551,8 +331,6 @@ class ProfileHeaderSection extends StatelessWidget {
     );
   }
 }
-
-// Menu Section with Soft Borders
 
 class ProfileMenuSection extends StatelessWidget {
   final String title;
@@ -596,7 +374,6 @@ class ProfileMenuSection extends StatelessWidget {
               color: isDark
                   ? Colors.white.withValues(alpha: 0.06)
                   : Colors.black.withValues(alpha: 0.05),
-              width: 1,
             ),
             boxShadow: [
               BoxShadow(
@@ -607,45 +384,53 @@ class ProfileMenuSection extends StatelessWidget {
             ],
           ),
           child: Column(
-            children: List.generate(
-              items.length,
-              (index) => Column(
-                children: [
-                  items[index],
-                  if (index < items.length - 1)
-                    Divider(
-                      height: 1,
-                      thickness: 1,
-                      indent: 60.w,
-                      endIndent: 16.w,
-                      color: isDark
-                          ? Colors.white.withValues(alpha: 0.05)
-                          : Colors.black.withValues(alpha: 0.04),
-                    ),
-                ],
-              ),
-            ),
+            children: _buildItemsWithDividers(isDark),
           ),
         ),
       ],
     );
   }
-}
 
-// Menu Item
+  List<Widget> _buildItemsWithDividers(bool isDark) {
+    final result = <Widget>[];
+
+    for (int i = 0; i < items.length; i++) {
+      result.add(items[i]);
+
+      // Add divider if not last
+      if (i < items.length - 1) {
+        result.add(Divider(
+          height: 1,
+          thickness: 1,
+          indent: 60.w,
+          endIndent: 16.w,
+          color: isDark
+              ? Colors.white.withValues(alpha: 0.05)
+              : Colors.black.withValues(alpha: 0.04),
+        ));
+      }
+    }
+
+    return result;
+  }
+}
 
 class ProfileMenuItem extends StatelessWidget {
   final String title;
   final IconData icon;
   final Widget? trailing;
-  final VoidCallback onTap;
+  final VoidCallback? onTap;
+  final bool isFirst;
+  final bool isLast;
 
   const ProfileMenuItem({
     super.key,
     required this.title,
     required this.icon,
     this.trailing,
-    required this.onTap,
+    this.onTap,
+    this.isFirst = false,
+    this.isLast = false,
   });
 
   @override
@@ -654,7 +439,14 @@ class ProfileMenuItem extends StatelessWidget {
       color: Colors.transparent,
       child: InkWell(
         onTap: onTap,
-        borderRadius: BorderRadius.circular(18.r),
+        borderRadius: BorderRadius.vertical(
+          top: isFirst ? Radius.circular(16.r) : Radius.zero,
+          bottom: isLast ? Radius.circular(16.r) : Radius.zero,
+        ),
+        splashColor:
+            Theme.of(context).colorScheme.primary.withValues(alpha: 0.08),
+        highlightColor:
+            Theme.of(context).colorScheme.primary.withValues(alpha: 0.05),
         child: Padding(
           padding: EdgeInsets.symmetric(horizontal: 16.w, vertical: 12.h),
           child: Row(
@@ -703,15 +495,13 @@ class ProfileMenuItem extends StatelessWidget {
   }
 }
 
-// Theme Option Tile (for bottom sheet)
-
 class ThemeOptionTile extends StatelessWidget {
   final ThemeMode themeMode;
   final IconData icon;
   final String title;
   final String description;
   final bool isSelected;
-  final VoidCallback onSelected;
+  final VoidCallback onTap;
 
   const ThemeOptionTile({
     super.key,
@@ -720,110 +510,158 @@ class ThemeOptionTile extends StatelessWidget {
     required this.title,
     required this.description,
     required this.isSelected,
-    required this.onSelected,
+    required this.onTap,
   });
 
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
-    return InkWell(
-      onTap: onSelected,
+    return Material(
+      color: isSelected
+          ? Theme.of(context).colorScheme.primary.withValues(alpha: 0.08)
+          : Theme.of(context).colorScheme.surface,
       borderRadius: BorderRadius.circular(16.r),
-      child: Container(
-        padding: EdgeInsets.all(16.w),
-        decoration: BoxDecoration(
-          color: isSelected
-              ? Theme.of(context).colorScheme.primary.withValues(alpha: 0.08)
-              : Theme.of(context).colorScheme.surface,
-          borderRadius: BorderRadius.circular(16.r),
-          border: Border.all(
-            color: isSelected
-                ? Theme.of(context).colorScheme.primary.withValues(alpha: 0.3)
-                : isDark
-                    ? Colors.white.withValues(alpha: 0.08)
-                    : const Color.fromRGBO(0, 0, 0, 0.06),
-            width: 1.5,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(16.r),
+        splashColor:
+            Theme.of(context).colorScheme.primary.withValues(alpha: 0.12),
+        highlightColor:
+            Theme.of(context).colorScheme.primary.withValues(alpha: 0.08),
+        child: Container(
+          padding: EdgeInsets.all(16.w),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(16.r),
+            border: Border.all(
+              color: isSelected
+                  ? Theme.of(context).colorScheme.primary.withValues(alpha: 0.3)
+                  : isDark
+                      ? Colors.white.withValues(alpha: 0.08)
+                      : const Color.fromRGBO(0, 0, 0, 0.06),
+              width: 1.5,
+            ),
           ),
-        ),
-        child: Row(
-          children: [
-            // Icon Container
-            Container(
-              padding: EdgeInsets.all(10.w),
-              decoration: BoxDecoration(
-                color: isSelected
-                    ? Theme.of(context)
-                        .colorScheme
-                        .primary
-                        .withValues(alpha: 0.15)
-                    : Theme.of(context)
-                        .colorScheme
-                        .primary
-                        .withValues(alpha: 0.08),
-                borderRadius: BorderRadius.circular(12.r),
-                border: Border.all(
+          child: Row(
+            children: [
+              Container(
+                padding: EdgeInsets.all(10.w),
+                decoration: BoxDecoration(
                   color: isSelected
                       ? Theme.of(context)
                           .colorScheme
                           .primary
-                          .withValues(alpha: 0.3)
+                          .withValues(alpha: 0.15)
                       : Theme.of(context)
                           .colorScheme
                           .primary
-                          .withValues(alpha: 0.1),
-                  width: 1,
+                          .withValues(alpha: 0.08),
+                  borderRadius: BorderRadius.circular(12.r),
+                  border: Border.all(
+                    color: isSelected
+                        ? Theme.of(context)
+                            .colorScheme
+                            .primary
+                            .withValues(alpha: 0.3)
+                        : Theme.of(context)
+                            .colorScheme
+                            .primary
+                            .withValues(alpha: 0.1),
+                  ),
+                ),
+                child: Icon(
+                  icon,
+                  color: Theme.of(context).colorScheme.primary,
+                  size: 22.sp,
                 ),
               ),
-              child: Icon(
-                icon,
-                color: Theme.of(context).colorScheme.primary,
-                size: 22.sp,
-              ),
-            ),
-
-            SizedBox(width: 16.w),
-
-            // Text Content
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    title,
-                    style: TextStyle(
-                      fontSize: 16.sp,
-                      fontWeight: FontWeight.w600,
-                      color: Theme.of(context).colorScheme.onSurface,
+              SizedBox(width: 16.w),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      title,
+                      style: TextStyle(
+                        fontSize: 16.sp,
+                        fontWeight: FontWeight.w600,
+                        color: Theme.of(context).colorScheme.onSurface,
+                      ),
                     ),
-                  ),
-                  SizedBox(height: 2.h),
-                  Text(
-                    description,
-                    style: TextStyle(
-                      fontSize: 13.sp,
-                      color: Theme.of(context)
-                          .colorScheme
-                          .onSurface
-                          .withValues(alpha: 0.5),
+                    SizedBox(height: 2.h),
+                    Text(
+                      description,
+                      style: TextStyle(
+                        fontSize: 13.sp,
+                        color: Theme.of(context)
+                            .colorScheme
+                            .onSurface
+                            .withValues(alpha: 0.5),
+                      ),
                     ),
-                  ),
-                ],
+                  ],
+                ),
               ),
-            ),
-
-            // Radio Button
-            Radio<ThemeMode>(
-              value: themeMode,
-              groupValue: isSelected ? themeMode : null,
-              onChanged: (_) => onSelected(),
-              fillColor: WidgetStateProperty.resolveWith(
-                (states) => Theme.of(context).colorScheme.primary,
+              Radio<ThemeMode>(
+                value: themeMode,
+                groupValue: isSelected ? themeMode : null,
+                onChanged: (_) => onTap(),
+                fillColor: WidgetStateProperty.resolveWith(
+                  (_) => Theme.of(context).colorScheme.primary,
+                ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
+    );
+  }
+}
+
+class LogoutDialog extends StatelessWidget {
+  const LogoutDialog({super.key});
+
+  static void show(BuildContext context) {
+    showDialog(
+      context: context,
+      builder: (_) => const LogoutDialog(),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(20.r),
+      ),
+      title: const Text('Logout'),
+      content: const Text('Are you sure you want to logout?'),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context),
+          child: const Text('Cancel'),
+        ),
+        TextButton(
+          onPressed: () {
+            Navigator.pop(context);
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: const Text('Logged out successfully'),
+                behavior: SnackBarBehavior.floating,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12.r),
+                ),
+              ),
+            );
+          },
+          child: Text(
+            'Logout',
+            style: TextStyle(
+              color: Theme.of(context).colorScheme.error,
+            ),
+          ),
+        ),
+      ],
     );
   }
 }

@@ -42,10 +42,7 @@ class _LoginPageState extends State<LoginPage> with ValidationMixin {
             if (state.user.role == 'customer') {
               Navigator.pushReplacementNamed(context, AppRoutes.customerHome);
             } else if (state.user.role == 'seller') {
-              Navigator.pushReplacementNamed(
-                context,
-                AppRoutes.sellerDashboard,
-              );
+              Navigator.pushReplacementNamed(context, AppRoutes.sellerHome);
             }
           } else if (state is AuthFailure) {
             ScaffoldMessenger.of(context).showSnackBar(
@@ -88,7 +85,10 @@ class _LoginPageState extends State<LoginPage> with ValidationMixin {
                     textAlign: TextAlign.center,
                     style: TextStyle(
                       fontSize: 14.sp,
-                      color: Theme.of(context).colorScheme.onSurface.withOpacity(0.6),
+                      color: Theme.of(context)
+                          .colorScheme
+                          .onSurface
+                          .withOpacity(0.6),
                       height: 1.4,
                     ),
                   ),
@@ -101,7 +101,10 @@ class _LoginPageState extends State<LoginPage> with ValidationMixin {
                       borderRadius: BorderRadius.circular(20.r),
                       boxShadow: [
                         BoxShadow(
-                          color: Theme.of(context).colorScheme.primary.withOpacity(0.08),
+                          color: Theme.of(context)
+                              .colorScheme
+                              .primary
+                              .withOpacity(0.08),
                           blurRadius: 24,
                           offset: const Offset(0, 8),
                           spreadRadius: 0,
@@ -193,7 +196,10 @@ class _LoginPageState extends State<LoginPage> with ValidationMixin {
                         'Don\'t have an account? ',
                         style: TextStyle(
                           fontSize: 14.sp,
-                          color: Theme.of(context).colorScheme.onSurface.withOpacity(0.6),
+                          color: Theme.of(context)
+                              .colorScheme
+                              .onSurface
+                              .withOpacity(0.6),
                         ),
                       ),
                       GestureDetector(

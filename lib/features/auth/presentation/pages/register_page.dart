@@ -41,7 +41,7 @@ class _RegisterPageState extends State<RegisterPage> with ValidationMixin {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Theme.of(context).colorScheme.background,
+      backgroundColor: Theme.of(context).colorScheme.surface,
       body: BlocListener<AuthBloc, AuthState>(
         listener: (context, state) {
           if (state is AuthSuccess) {
@@ -50,7 +50,7 @@ class _RegisterPageState extends State<RegisterPage> with ValidationMixin {
             } else if (state.user.role == 'seller') {
               Navigator.pushReplacementNamed(
                 context,
-                AppRoutes.sellerDashboard,
+                AppRoutes.sellerHome,
               );
             }
           } else if (state is AuthFailure) {
