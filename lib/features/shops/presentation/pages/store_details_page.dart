@@ -9,6 +9,7 @@ import 'package:universal_go/features/cart/presentation/bloc/cart_state.dart';
 import 'package:universal_go/features/shops/data/models/store_model.dart';
 import 'package:universal_go/features/shops/data/models/product_model.dart';
 import 'package:universal_go/features/shops/presentation/widgets/product_card.dart';
+import 'package:universal_go/shared/widgets/gradient_app_bar.dart';
 
 class StoreDetailsPage extends StatefulWidget {
   final StoreModel store;
@@ -146,9 +147,10 @@ class _StoreDetailsPageState extends State<StoreDetailsPage> {
 
     context.read<CartBloc>().add(AddToCart(item: cartItem));
 
+    ScaffoldMessenger.of(context).clearSnackBars();
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        content: const Text('Added to cart'),
+        content: Text('${product.name} added to your cart'),
         backgroundColor: Theme.of(context).colorScheme.secondary,
         behavior: SnackBarBehavior.floating,
         shape: RoundedRectangleBorder(
@@ -166,97 +168,66 @@ class _StoreDetailsPageState extends State<StoreDetailsPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: PreferredSize(
-        preferredSize: Size(double.infinity, 70.h),
-        child: Container(
-          decoration: BoxDecoration(
-            gradient: LinearGradient(
-              colors: [
-                Theme.of(context).colorScheme.primary,
-                Theme.of(context).colorScheme.primary.withValues(alpha: 0.85),
-              ],
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
-            ),
+      body: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          GradientAppBar(
+            title: widget.store.name,
+            subtitle: widget.store.address,
+            showBackButton: true,
+            actions: [
+              const CartIconButton(),
+            ],
           ),
-          child: SafeArea(
-            bottom: false,
-            child: Padding(
-              padding: EdgeInsets.symmetric(horizontal: 8.w, vertical: 12.h),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          Expanded(
+            child: SingleChildScrollView(
+              padding: EdgeInsets.symmetric(horizontal: 16.w, vertical: 18.h),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
                 children: [
-                  BackButton(color: Theme.of(context).colorScheme.onPrimary),
-                  Expanded(
-                    child: Text(
-                      widget.store.name,
-                      style: TextStyle(
-                        fontSize: 20.sp,
-                        fontWeight: FontWeight.w600,
-                        color: Colors.white,
-                      ),
-                      textAlign: TextAlign.center,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
+                  // Store Info Card - with rating and product count
+                  StoreInfoCard(store: widget.store),
+                  SizedBox(height: 16.h),
+
+                  // Products Header
+                  Text(
+                    'Products',
+                    style: TextStyle(
+                      fontSize: 22.sp,
+                      fontWeight: FontWeight.w600,
+                      color: Theme.of(context).colorScheme.onSurface,
                     ),
                   ),
-                  const CartIconButton(),
+
+                  SizedBox(height: 16.h),
+
+                  // Search Bar
+                  CustomSearchBar(controller: _searchController),
+
+                  SizedBox(height: 20.h),
+                  // Products Grid or Loading/Empty State
+                  if (_isLoading)
+                    SizedBox(
+                      height: 300.h,
+                      child: Center(
+                        child: CircularProgressIndicator.adaptive(),
+                      ),
+                    )
+                  else if (_filteredProducts.isEmpty)
+                    EmptyProductsView(
+                      hasSearchQuery: _searchController.text.isNotEmpty,
+                    )
+                  else
+                    ProductsGrid(
+                      products: _filteredProducts,
+                      onAddToCart: _addToCart,
+                    ),
                 ],
               ),
             ),
           ),
-        ),
-      ),
-      body: SingleChildScrollView(
-        padding: EdgeInsets.symmetric(
-          horizontal: 16.w,
-          vertical: 24.h,
-        ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // Store Info Card - NO store name, WITH rating and product count
-            StoreInfoCard(store: widget.store),
-
-            SizedBox(height: 16.h),
-
-            // Products Header
-            Text(
-              'Products',
-              style: TextStyle(
-                fontSize: 22.sp,
-                fontWeight: FontWeight.w600,
-                color: Theme.of(context).colorScheme.onSurface,
-              ),
-            ),
-
-            SizedBox(height: 16.h),
-
-            // Search Bar
-            CustomSearchBar(controller: _searchController),
-
-            SizedBox(height: 20.h),
-
-            // Products Grid or Loading/Empty State
-            if (_isLoading)
-              SizedBox(
-                height: 300.h,
-                child: Center(
-                  child: CircularProgressIndicator.adaptive(),
-                ),
-              )
-            else if (_filteredProducts.isEmpty)
-              EmptyProductsView(
-                hasSearchQuery: _searchController.text.isNotEmpty,
-              )
-            else
-              ProductsGrid(
-                products: _filteredProducts,
-                onAddToCart: _addToCart,
-              ),
-          ],
-        ),
+        ],
       ),
     );
   }
@@ -315,55 +286,55 @@ class CartIconButton extends StatelessWidget {
     return BlocBuilder<CartBloc, CartState>(
       builder: (context, state) {
         final totalQuantity = _getTotalCartQuantity(state);
-        final cartItemCount = totalQuantity > 99 ? '99+' : totalQuantity.toString();
+        final cartItemCount =
+            totalQuantity > 99 ? '99+' : totalQuantity.toString();
 
-        return Stack(
-          clipBehavior: Clip.none,
-          children: [
-            IconButton(
-              icon: Icon(
+        return InkWell(
+          onTap: () {
+            // Navigate to CustomerMainPage with cart tab selected. This preserves the bottom navigation bar as it's part of CustomerMainPage
+            Navigator.pushNamedAndRemoveUntil(
+              context,
+              AppRoutes.customerMain,
+              (route) => false,
+              arguments: 1, // Cart tab index
+            );
+          },
+          child: Stack(
+            clipBehavior: Clip.none,
+            children: [
+              Icon(
                 Icons.shopping_cart_outlined,
-                color: Colors.white,
+                color: Theme.of(context).colorScheme.surface,
                 size: 24.sp,
               ),
-              onPressed: () {
-                // Navigate to CustomerMainPage with cart tab selected
-                // This preserves the bottom navigation bar as it's part of CustomerMainPage
-                Navigator.pushNamedAndRemoveUntil(
-                  context,
-                  AppRoutes.customerMain,
-                  (route) => false,
-                  arguments: 1, // Cart tab index
-                );
-              },
-            ),
-            if (totalQuantity > 0)
-              Positioned(
-                right: 6.w,
-                top: 6.h,
-                child: Container(
-                  padding: EdgeInsets.all(4.w),
-                  decoration: const BoxDecoration(
-                    color: Colors.red,
-                    shape: BoxShape.circle,
-                  ),
-                  constraints: BoxConstraints(
-                    minWidth: 18.w,
-                    minHeight: 18.h,
-                  ),
-                  child: Center(
-                    child: Text(
-                      cartItemCount,
-                      style: TextStyle(
-                        color: Colors.white,
-                        fontSize: 11.sp,
-                        fontWeight: FontWeight.bold,
+              if (totalQuantity > 0)
+                Positioned(
+                  right: -6.w,
+                  top: -10.h,
+                  child: Container(
+                    padding: EdgeInsets.all(4.w),
+                    decoration: const BoxDecoration(
+                      color: Colors.red,
+                      shape: BoxShape.circle,
+                    ),
+                    constraints: BoxConstraints(
+                      minWidth: 14.w,
+                      minHeight: 14.h,
+                    ),
+                    child: Center(
+                      child: Text(
+                        cartItemCount,
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontSize: 11.sp,
+                          fontWeight: FontWeight.bold,
+                        ),
                       ),
                     ),
                   ),
                 ),
-              ),
-          ],
+            ],
+          ),
         );
       },
     );
@@ -426,14 +397,20 @@ class StoreInfoCard extends StatelessWidget {
                     Icon(
                       Icons.location_on_outlined,
                       size: 16.sp,
-                      color: Theme.of(context).colorScheme.onSurface.withOpacity(0.6),
+                      color: Theme.of(context)
+                          .colorScheme
+                          .onSurface
+                          .withOpacity(0.6),
                     ),
                     SizedBox(width: 4.w),
                     Text(
                       '0.5 km away',
                       style: TextStyle(
                         fontSize: 14.sp,
-                        color: Theme.of(context).colorScheme.onSurface.withOpacity(0.6),
+                        color: Theme.of(context)
+                            .colorScheme
+                            .onSurface
+                            .withOpacity(0.6),
                       ),
                     ),
                   ],
@@ -446,7 +423,10 @@ class StoreInfoCard extends StatelessWidget {
                   store.address,
                   style: TextStyle(
                     fontSize: 13.sp,
-                    color: Theme.of(context).colorScheme.onSurface.withOpacity(0.6),
+                    color: Theme.of(context)
+                        .colorScheme
+                        .onSurface
+                        .withOpacity(0.6),
                   ),
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
@@ -475,14 +455,20 @@ class StoreInfoCard extends StatelessWidget {
                     Icon(
                       Icons.shopping_bag_outlined,
                       size: 18.sp,
-                      color: Theme.of(context).colorScheme.onSurface.withOpacity(0.6),
+                      color: Theme.of(context)
+                          .colorScheme
+                          .onSurface
+                          .withOpacity(0.6),
                     ),
                     SizedBox(width: 4.w),
                     Text(
                       '${store.productCount} products',
                       style: TextStyle(
                         fontSize: 13.sp,
-                        color: Theme.of(context).colorScheme.onSurface.withOpacity(0.6),
+                        color: Theme.of(context)
+                            .colorScheme
+                            .onSurface
+                            .withOpacity(0.6),
                       ),
                     ),
                   ],
@@ -583,6 +569,3 @@ class EmptyProductsView extends StatelessWidget {
     );
   }
 }
-
-
-

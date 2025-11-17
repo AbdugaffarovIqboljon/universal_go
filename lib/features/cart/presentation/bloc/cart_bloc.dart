@@ -46,16 +46,13 @@ class CartBloc extends Bloc<CartEvent, CartState> {
     AddToCart event,
     Emitter<CartState> emit,
   ) async {
+    // Only show loading for initial add, not for instant operations
     emit(CartLoading());
 
     final result = await addToCartUseCase(AddToCartParams(item: event.item));
     result.fold(
       (failure) => emit(CartError(message: failure.message)),
-      (cart) {
-        emit(CartLoaded(cart: cart));
-        // Reload cart to ensure state is fresh
-        add(LoadCart());
-      },
+      (cart) => emit(CartLoaded(cart: cart)),
     );
   }
 
@@ -63,18 +60,13 @@ class CartBloc extends Bloc<CartEvent, CartState> {
     RemoveFromCart event,
     Emitter<CartState> emit,
   ) async {
-    emit(CartLoading());
-
+    // No loading state - instant optimistic update
     final result = await removeFromCartUseCase(
       RemoveFromCartParams(productId: event.productId),
     );
     result.fold(
       (failure) => emit(CartError(message: failure.message)),
-      (cart) {
-        emit(CartLoaded(cart: cart));
-        // Reload cart to ensure state is fresh
-        add(LoadCart());
-      },
+      (cart) => emit(CartLoaded(cart: cart)),
     );
   }
 
@@ -82,8 +74,7 @@ class CartBloc extends Bloc<CartEvent, CartState> {
     UpdateCartQuantity event,
     Emitter<CartState> emit,
   ) async {
-    emit(CartLoading());
-
+    // No loading state - instant optimistic update for smooth UX
     final result = await updateCartQuantityUseCase(
       UpdateQuantityParams(
         productId: event.productId,
@@ -92,11 +83,7 @@ class CartBloc extends Bloc<CartEvent, CartState> {
     );
     result.fold(
       (failure) => emit(CartError(message: failure.message)),
-      (cart) {
-        emit(CartLoaded(cart: cart));
-        // Reload cart to ensure state is fresh
-        add(LoadCart());
-      },
+      (cart) => emit(CartLoaded(cart: cart)),
     );
   }
 
@@ -104,17 +91,11 @@ class CartBloc extends Bloc<CartEvent, CartState> {
     ClearCart event,
     Emitter<CartState> emit,
   ) async {
-    emit(CartLoading());
-
+    // No loading state - instant clear
     final result = await clearCartUseCase();
     result.fold(
       (failure) => emit(CartError(message: failure.message)),
-      (_) {
-        emit(const CartLoaded(cart: CartEntity(items: [], shopId: null)));
-        // Reload cart to ensure state is fresh
-        add(LoadCart());
-      },
+      (_) => emit(const CartLoaded(cart: CartEntity(items: [], shopId: null))),
     );
   }
 }
-

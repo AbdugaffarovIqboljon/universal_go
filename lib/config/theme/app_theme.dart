@@ -51,7 +51,7 @@ final ThemeData lightTheme = ThemeData(
   useMaterial3: true,
   brightness: Brightness.light,
   visualDensity: VisualDensity.adaptivePlatformDensity,
-  fontFamily: 'Poppins',
+  fontFamily: 'Manrope',
   colorScheme: _buildLightScheme(),
   scaffoldBackgroundColor: AppColorsLight.surface,
 
@@ -65,7 +65,7 @@ final ThemeData lightTheme = ThemeData(
       fontSize: 20.sp,
       fontWeight: FontWeight.w600,
       color: AppColorsLight.textPrimary,
-      fontFamily: 'Poppins',
+      fontFamily: 'Manrope',
     ),
   ),
 
@@ -89,7 +89,7 @@ final ThemeData lightTheme = ThemeData(
       textStyle: TextStyle(
         fontWeight: FontWeight.w600,
         fontSize: 16.sp,
-        fontFamily: 'Poppins',
+        fontFamily: 'Manrope',
       ),
       elevation: 0,
       shadowColor: Colors.transparent,
@@ -106,7 +106,7 @@ final ThemeData lightTheme = ThemeData(
       textStyle: TextStyle(
         fontWeight: FontWeight.w600,
         fontSize: 16.sp,
-        fontFamily: 'Poppins',
+        fontFamily: 'Manrope',
       ),
       elevation: 0,
     ),
@@ -118,7 +118,7 @@ final ThemeData lightTheme = ThemeData(
       textStyle: TextStyle(
         fontWeight: FontWeight.w600,
         fontSize: 14.sp,
-        fontFamily: 'Poppins',
+        fontFamily: 'Manrope',
       ),
       padding: EdgeInsets.symmetric(horizontal: 16.w, vertical: 12.h),
       shape: RoundedRectangleBorder(
@@ -141,7 +141,7 @@ final ThemeData lightTheme = ThemeData(
       textStyle: TextStyle(
         fontWeight: FontWeight.w600,
         fontSize: 16.sp,
-        fontFamily: 'Poppins',
+        fontFamily: 'Manrope',
       ),
     ),
   ),
@@ -212,12 +212,12 @@ final ThemeData lightTheme = ThemeData(
     selectedLabelStyle: TextStyle(
       fontSize: 12.sp,
       fontWeight: FontWeight.w600,
-      fontFamily: 'Poppins',
+      fontFamily: 'Manrope',
     ),
     unselectedLabelStyle: TextStyle(
       fontSize: 12.sp,
       fontWeight: FontWeight.w500,
-      fontFamily: 'Poppins',
+      fontFamily: 'Manrope',
     ),
   ),
 
@@ -237,7 +237,7 @@ final ThemeData lightTheme = ThemeData(
     backgroundColor: AppColorsLight.textPrimary,
     contentTextStyle: TextStyle(
       fontSize: 14.sp,
-      fontFamily: 'Poppins',
+      fontFamily: 'Manrope',
     ),
   ),
 );
@@ -246,7 +246,7 @@ final ThemeData darkTheme = ThemeData(
   useMaterial3: true,
   brightness: Brightness.dark,
   visualDensity: VisualDensity.adaptivePlatformDensity,
-  fontFamily: 'Poppins',
+  fontFamily: 'Manrope',
   colorScheme: _buildDarkScheme(),
   scaffoldBackgroundColor: AppColorsDark.background,
 
@@ -260,7 +260,7 @@ final ThemeData darkTheme = ThemeData(
       fontSize: 20.sp,
       fontWeight: FontWeight.w600,
       color: AppColorsDark.textPrimary,
-      fontFamily: 'Poppins',
+      fontFamily: 'Manrope',
     ),
   ),
 
@@ -284,7 +284,7 @@ final ThemeData darkTheme = ThemeData(
       textStyle: TextStyle(
         fontWeight: FontWeight.w600,
         fontSize: 16.sp,
-        fontFamily: 'Poppins',
+        fontFamily: 'Manrope',
       ),
       elevation: 0,
       shadowColor: Colors.transparent,
@@ -301,7 +301,7 @@ final ThemeData darkTheme = ThemeData(
       textStyle: TextStyle(
         fontWeight: FontWeight.w600,
         fontSize: 16.sp,
-        fontFamily: 'Poppins',
+        fontFamily: 'Manrope',
       ),
       elevation: 0,
     ),
@@ -313,7 +313,7 @@ final ThemeData darkTheme = ThemeData(
       textStyle: TextStyle(
         fontWeight: FontWeight.w600,
         fontSize: 14.sp,
-        fontFamily: 'Poppins',
+        fontFamily: 'Manrope',
       ),
       padding: EdgeInsets.symmetric(horizontal: 16.w, vertical: 12.h),
       shape: RoundedRectangleBorder(
@@ -336,7 +336,7 @@ final ThemeData darkTheme = ThemeData(
       textStyle: TextStyle(
         fontWeight: FontWeight.w600,
         fontSize: 16.sp,
-        fontFamily: 'Poppins',
+        fontFamily: 'Manrope',
       ),
     ),
   ),
@@ -407,12 +407,12 @@ final ThemeData darkTheme = ThemeData(
     selectedLabelStyle: TextStyle(
       fontSize: 12.sp,
       fontWeight: FontWeight.w600,
-      fontFamily: 'Poppins',
+      fontFamily: 'Manrope',
     ),
     unselectedLabelStyle: TextStyle(
       fontSize: 12.sp,
       fontWeight: FontWeight.w500,
-      fontFamily: 'Poppins',
+      fontFamily: 'Manrope',
     ),
   ),
 
@@ -432,7 +432,7 @@ final ThemeData darkTheme = ThemeData(
     backgroundColor: AppColorsDark.textPrimary,
     contentTextStyle: TextStyle(
       fontSize: 14.sp,
-      fontFamily: 'Poppins',
+      fontFamily: 'Manrope',
     ),
   ),
 );

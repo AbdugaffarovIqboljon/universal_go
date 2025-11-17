@@ -88,7 +88,7 @@ class _LoginPageState extends State<LoginPage> with ValidationMixin {
                       color: Theme.of(context)
                           .colorScheme
                           .onSurface
-                          .withOpacity(0.6),
+                          .withValues(alpha: 0.6),
                       height: 1.4,
                     ),
                   ),
@@ -104,7 +104,7 @@ class _LoginPageState extends State<LoginPage> with ValidationMixin {
                           color: Theme.of(context)
                               .colorScheme
                               .primary
-                              .withOpacity(0.08),
+                              .withValues(alpha: 0.08),
                           blurRadius: 24,
                           offset: const Offset(0, 8),
                           spreadRadius: 0,
@@ -199,7 +199,7 @@ class _LoginPageState extends State<LoginPage> with ValidationMixin {
                           color: Theme.of(context)
                               .colorScheme
                               .onSurface
-                              .withOpacity(0.6),
+                              .withValues(alpha: 0.6),
                         ),
                       ),
                       GestureDetector(

@@ -1,6 +1,10 @@
+// lib/features/location/customer_current_location_determiner.dart
+
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
+import 'package:universal_go/shared/widgets/current_location_fab.dart';
+import 'package:universal_go/shared/widgets/gradient_app_bar.dart';
 import 'package:yandex_mapkit/yandex_mapkit.dart';
 import 'package:geolocator/geolocator.dart';
 
@@ -31,16 +35,20 @@ class _CustomerCurrentLocationDeterminerState
     with SingleTickerProviderStateMixin {
   final searchController = TextEditingController();
   final searchFocusNode = FocusNode();
-  final addressController = TextEditingController();
 
   YandexMapController? mapController;
   Point? selectedPoint;
   String selectedAddress = '';
-  bool isLoadingAddress = false;
-  bool isLoadingCurrentLocation = false;
-  bool isSearching = false;
+  String addressDetails = '';
+
+  final isLoadingAddress = ValueNotifier<bool>(false);
+  final isLoadingCurrentLocation = ValueNotifier<bool>(false);
+  final isSearching = ValueNotifier<bool>(false);
+
   List<SearchResultItem> searchResults = [];
   Timer? searchDebounce;
+
+  SearchSession? _activeSearchSession;
 
   late AnimationController pulseController;
   late Animation<double> pulseAnimation;
@@ -69,9 +77,12 @@ class _CustomerCurrentLocationDeterminerState
   void dispose() {
     searchController.dispose();
     searchFocusNode.dispose();
-    addressController.dispose();
     searchDebounce?.cancel();
     pulseController.dispose();
+    isLoadingAddress.dispose();
+    isLoadingCurrentLocation.dispose();
+    isSearching.dispose();
+    _activeSearchSession?.close();
     super.dispose();
   }
 
@@ -83,7 +94,7 @@ class _CustomerCurrentLocationDeterminerState
   }
 
   Future<void> _getCurrentLocation() async {
-    setState(() => isLoadingCurrentLocation = true);
+    isLoadingCurrentLocation.value = true;
 
     try {
       final position = await Geolocator.getCurrentPosition(
@@ -92,7 +103,9 @@ class _CustomerCurrentLocationDeterminerState
         ),
       );
 
-      debugPrint('📍 Current Position: ${position.latitude}, ${position.longitude}');
+      debugPrint(
+        '📍 Current Position: ${position.latitude}, ${position.longitude}',
+      );
 
       final point = Point(
         latitude: position.latitude,
@@ -101,7 +114,7 @@ class _CustomerCurrentLocationDeterminerState
 
       await _selectLocation(point);
 
-      if (mapController != null) {
+      if (mounted && mapController != null) {
         await mapController!.moveCamera(
           CameraUpdate.newCameraPosition(
             CameraPosition(target: point, zoom: 17),
@@ -123,205 +136,235 @@ class _CustomerCurrentLocationDeterminerState
         );
       }
     } finally {
-      if (mounted) {
-        setState(() => isLoadingCurrentLocation = false);
-      }
+      isLoadingCurrentLocation.value = false;
     }
   }
 
   Future<void> _selectLocation(Point point) async {
-    setState(() {
-      selectedPoint = point;
-      isLoadingAddress = true;
-    });
+    if (!mounted) return;
+
+    setState(() => selectedPoint = point);
+    isLoadingAddress.value = true;
 
     debugPrint('🔍 Reverse geocoding: ${point.latitude}, ${point.longitude}');
 
     try {
+      // Close previous session if exists
+      await _activeSearchSession?.close();
+
       final resultWithSession = YandexSearch.searchByPoint(
         point: point,
         zoom: 17,
         searchOptions: const SearchOptions(
           searchType: SearchType.geo,
           geometry: false,
+          resultPageSize: 10,
         ),
       );
 
-      final (session, resultFuture) = await resultWithSession;
+      // Await to get the tuple
+      final sessionAndFuture = await resultWithSession;
+      final session = sessionAndFuture.$1;
+      final resultFuture = sessionAndFuture.$2;
+
+      _activeSearchSession = session;
+
       final result = await resultFuture;
 
-      debugPrint('📦 Search result items: ${result.items?.length ?? 0}');
+      debugPrint('📦 Reverse geocode results: ${result.items?.length ?? 0}');
+
+      String foundAddress = '';
+      String foundDetails = '';
 
       if (result.items != null && result.items!.isNotEmpty) {
-        final firstItem = result.items!.first;
-        String address = '';
+        for (final item in result.items!) {
+          final address = item.name;
 
-        if (firstItem.toponymMetadata?.address.formattedAddress != null) {
-          address = firstItem.toponymMetadata!.address.formattedAddress;
-          debugPrint('✅ Found address: $address');
-        } else if (firstItem.name.isNotEmpty) {
-          address = firstItem.name;
-          debugPrint('✅ Found name: $address');
-        }
-
-        if (address.isNotEmpty) {
-          if (mounted) {
-            setState(() {
-              selectedAddress = address;
-              addressController.text = address;
-              isLoadingAddress = false;
-            });
+          if (address.isNotEmpty && !_isCoordinateString(address)) {
+            foundAddress = address;
+            foundDetails = 'Selected location';
+            debugPrint('✅ Found address: $foundAddress');
+            break;
           }
-          await session.close();
-          return;
         }
       }
 
-      debugPrint('⚠️ No address found, showing manual input');
+      if (foundAddress.isEmpty) {
+        debugPrint('⚠️ No valid address found, using coordinates');
+        foundAddress =
+            '${point.latitude.toStringAsFixed(6)}, ${point.longitude.toStringAsFixed(6)}';
+        foundDetails = 'Tap search to find nearby addresses';
+      }
 
       if (mounted) {
         setState(() {
-          selectedAddress = '';
-          addressController.text = '';
-          isLoadingAddress = false;
+          selectedAddress = foundAddress;
+          addressDetails = foundDetails;
         });
       }
 
+      isLoadingAddress.value = false;
       await session.close();
+      _activeSearchSession = null;
     } catch (e) {
       debugPrint('❌ Reverse geocoding error: $e');
+
+      if (e.toString().contains('MissingPluginException')) {
+        debugPrint(
+            '⚠️ Search API not available. Make sure you\'re using the FULL variant of yandex_mapkit');
+      }
+
       if (mounted) {
         setState(() {
-          selectedAddress = '';
-          addressController.text = '';
-          isLoadingAddress = false;
+          selectedAddress =
+              '${point.latitude.toStringAsFixed(6)}, ${point.longitude.toStringAsFixed(6)}';
+          addressDetails = 'Search not available';
         });
       }
+      isLoadingAddress.value = false;
     }
+  }
+
+  bool _isCoordinateString(String text) {
+    final coordPattern = RegExp(r'^-?\d+\.?\d*,?\s*-?\d+\.?\d*$');
+    return coordPattern.hasMatch(text);
   }
 
   void _onSearchChanged(String query) {
     searchDebounce?.cancel();
 
     if (query.trim().isEmpty) {
-      setState(() {
-        searchResults = [];
-        isSearching = false;
-      });
+      setState(() => searchResults = []);
+      isSearching.value = false;
       return;
     }
 
-    setState(() => isSearching = true);
+    isSearching.value = true;
 
-    searchDebounce = Timer(const Duration(milliseconds: 400), () {
+    searchDebounce = Timer(const Duration(milliseconds: 500), () {
       _performSearch(query);
     });
   }
 
   Future<void> _performSearch(String query) async {
-    if (query.trim().isEmpty) return;
+    if (query.trim().isEmpty || !mounted) return;
 
     debugPrint('🔎 Searching for: $query');
 
     try {
+      // Close previous session if exists
+      await _activeSearchSession?.close();
+
       final searchCenter = selectedPoint ?? storeLocation;
 
-      // Use YandexSearch.searchByText instead of YandexSuggest
       final resultWithSession = YandexSearch.searchByText(
         searchText: query,
         geometry: Geometry.fromPoint(searchCenter),
         searchOptions: const SearchOptions(
           searchType: SearchType.geo,
-          resultPageSize: 10,
-          geometry: false,
+          resultPageSize: 20,
+          geometry: true,
         ),
       );
 
-      final (session, resultFuture) = await resultWithSession;
+      // Await to get the tuple
+      final sessionAndFuture = await resultWithSession;
+      final session = sessionAndFuture.$1;
+      final resultFuture = sessionAndFuture.$2;
+
+      _activeSearchSession = session;
+
       final result = await resultFuture;
 
       debugPrint('📋 Search results: ${result.items?.length ?? 0}');
 
       if (result.items != null && mounted) {
-        final items = result.items!.map((item) {
-          // Extract point from geometry
+        final items = <SearchResultItem>[];
+
+        for (final item in result.items!) {
           Point? point;
-          if (item.geometry.isNotEmpty && item.geometry.first.point != null) {
-            point = item.geometry.first.point!;
+
+          if (item.geometry.isNotEmpty) {
+            final geometry = item.geometry.first;
+            if (geometry.point != null) {
+              point = geometry.point!;
+            } else if (geometry.boundingBox != null) {
+              final box = geometry.boundingBox!;
+              point = Point(
+                latitude: (box.northEast.latitude + box.southWest.latitude) / 2,
+                longitude:
+                    (box.northEast.longitude + box.southWest.longitude) / 2,
+              );
+            }
           }
 
-          // Get address details
-          String title = item.name;
-          String subtitle = '';
+          if (point == null) continue;
 
-          if (item.toponymMetadata != null) {
-            final address = item.toponymMetadata!.address;
-            if (address.formattedAddress.isNotEmpty) {
-              title = address.formattedAddress;
-            }
-            
-            // Build subtitle from address components
-            final components = <String>[];
-            if (address.addressComponents.isNotEmpty) {
-              for (final component in address.addressComponents.entries) {
-                components.add(component.value);
-                components.add(component.key.name);
-              }
-            }
-            subtitle = components.join(' • ');
-          }
+          final title = item.name;
+          if (title.isEmpty || _isCoordinateString(title)) continue;
 
-          return SearchResultItem(
+          final distance = _calculateDistance(point);
+          final distanceText = distance < 1
+              ? '${(distance * 1000).toStringAsFixed(0)}m away'
+              : '${distance.toStringAsFixed(1)}km away';
+
+          items.add(SearchResultItem(
             title: title,
-            subtitle: subtitle.isNotEmpty ? subtitle : 'Location',
+            subtitle: distanceText,
             point: point,
-          );
-        }).where((item) => item.point != null).toList();
+          ));
+        }
 
-        setState(() {
-          searchResults = items;
-          isSearching = false;
-        });
+        if (mounted) {
+          setState(() => searchResults = items);
+        }
       } else if (mounted) {
-        setState(() {
-          searchResults = [];
-          isSearching = false;
-        });
+        setState(() => searchResults = []);
       }
 
+      isSearching.value = false;
       await session.close();
+      _activeSearchSession = null;
     } catch (e, stackTrace) {
       debugPrint('❌ Search error: $e');
       debugPrint('❌ Stack trace: $stackTrace');
-      if (mounted) {
-        setState(() {
-          searchResults = [];
-          isSearching = false;
-        });
+
+      if (e.toString().contains('MissingPluginException') && mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Search requires the full version of Yandex MapKit'),
+            duration: Duration(seconds: 3),
+          ),
+        );
       }
+
+      if (mounted) {
+        setState(() => searchResults = []);
+      }
+      isSearching.value = false;
     }
   }
 
   Future<void> _selectSearchResult(SearchResultItem item) async {
     searchController.clear();
     searchFocusNode.unfocus();
+
+    if (!mounted) return;
+
     setState(() {
       searchResults = [];
-      isSearching = false;
+      selectedPoint = item.point;
+      selectedAddress = item.title;
+      addressDetails = item.subtitle;
     });
+    isSearching.value = false;
 
     debugPrint('📍 Selected: ${item.title}');
 
-    if (item.point != null) {
-      setState(() {
-        selectedPoint = item.point!;
-        selectedAddress = item.title;
-        addressController.text = item.title;
-      });
-
-      mapController?.moveCamera(
+    if (mapController != null && mounted) {
+      mapController!.moveCamera(
         CameraUpdate.newCameraPosition(
-          CameraPosition(target: item.point!, zoom: 17),
+          CameraPosition(target: item.point, zoom: 17),
         ),
         animation: const MapAnimation(
           type: MapAnimationType.smooth,
@@ -352,24 +395,23 @@ class _CustomerCurrentLocationDeterminerState
       return;
     }
 
-    final finalAddress = addressController.text.trim();
-
-    if (finalAddress.isEmpty) {
+    if (selectedAddress.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: const Text('Please enter your delivery address'),
+          content: const Text('Please wait while we determine the address'),
           backgroundColor: Theme.of(context).colorScheme.error,
         ),
       );
       return;
     }
 
-    final coordPattern = RegExp(r'^-?\d+\.?\d*,?\s*-?\d+\.?\d*$');
-    if (coordPattern.hasMatch(finalAddress)) {
+    if (_isCoordinateString(selectedAddress)) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: const Text('Please enter a proper street address'),
+          content: const Text(
+              'Could not determine address. Please search for a nearby location'),
           backgroundColor: Theme.of(context).colorScheme.error,
+          duration: const Duration(seconds: 3),
         ),
       );
       return;
@@ -378,11 +420,11 @@ class _CustomerCurrentLocationDeterminerState
     final location = SelectedLocation(
       latitude: selectedPoint!.latitude,
       longitude: selectedPoint!.longitude,
-      address: finalAddress,
+      address: selectedAddress,
       distance: _calculateDistance(selectedPoint!),
     );
 
-    debugPrint('✅ Confirmed location: $finalAddress');
+    debugPrint('✅ Confirmed location: $selectedAddress');
     Navigator.pop(context, location);
   }
 
@@ -422,21 +464,12 @@ class _CustomerCurrentLocationDeterminerState
 
     return Scaffold(
       backgroundColor: colorScheme.surface,
-      appBar: AppBar(
-        backgroundColor: colorScheme.surface,
-        elevation: 0,
-        scrolledUnderElevation: 0,
-        leading: IconButton(
-          icon: Icon(Icons.arrow_back, color: colorScheme.onSurface),
-          onPressed: () => Navigator.pop(context),
-        ),
-        title: Text(
-          'Select Location',
-          style: TextStyle(
-            fontSize: 18.sp,
-            fontWeight: FontWeight.w600,
-            color: colorScheme.onSurface,
-          ),
+      appBar: PreferredSize(
+        preferredSize: Size.fromHeight(80.h),
+        child: const GradientAppBar(
+          title: "Select Location",
+          showBackButton: true,
+          subtitle: "select your delivery address",
         ),
       ),
       body: Stack(
@@ -459,22 +492,9 @@ class _CustomerCurrentLocationDeterminerState
             },
             mapObjects: _buildCircleMapObjects(),
           ),
-          Center(
-            child: IgnorePointer(
-              child: AnimatedBuilder(
-                animation: pulseAnimation,
-                builder: (context, child) {
-                  return Opacity(
-                    opacity: selectedPoint == null ? 0.6 : 0.0,
-                    child: Transform.scale(
-                      scale: pulseAnimation.value,
-                      child: child,
-                    ),
-                  );
-                },
-                child: const MapCenterCrosshair(),
-              ),
-            ),
+          MapCenterCrosshair(
+            animation: pulseAnimation,
+            isVisible: selectedPoint == null,
           ),
           SafeArea(
             child: Column(
@@ -483,7 +503,7 @@ class _CustomerCurrentLocationDeterminerState
                   controller: searchController,
                   focusNode: searchFocusNode,
                   onChanged: _onSearchChanged,
-                  isSearching: isSearching,
+                  isSearchingNotifier: isSearching,
                 ),
                 if (searchResults.isNotEmpty)
                   SearchResultsList(
@@ -500,18 +520,15 @@ class _CustomerCurrentLocationDeterminerState
               bottom: 16.h,
               child: SelectedLocationCard(
                 address: selectedAddress,
-                isLoading: isLoadingAddress,
+                details: addressDetails,
+                isLoadingNotifier: isLoadingAddress,
                 onConfirm: _confirmLocation,
-                addressController: addressController,
-                onAddressChanged: (value) {
-                  setState(() => selectedAddress = value);
-                },
               ),
             ),
         ],
       ),
       floatingActionButton: CurrentLocationFab(
-        isLoading: isLoadingCurrentLocation,
+        isLoadingNotifier: isLoadingCurrentLocation,
         onPressed: _getCurrentLocation,
       ),
     );
@@ -521,38 +538,61 @@ class _CustomerCurrentLocationDeterminerState
 class SearchResultItem {
   final String title;
   final String subtitle;
-  final Point? point;
+  final Point point;
 
   const SearchResultItem({
     required this.title,
     required this.subtitle,
-    this.point,
+    required this.point,
   });
 }
 
 class MapCenterCrosshair extends StatelessWidget {
-  const MapCenterCrosshair({super.key});
+  final Animation<double> animation;
+  final bool isVisible;
+
+  const MapCenterCrosshair({
+    super.key,
+    required this.animation,
+    required this.isVisible,
+  });
 
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
 
-    return Container(
-      width: 48.w,
-      height: 48.h,
-      decoration: BoxDecoration(
-        shape: BoxShape.circle,
-        color: colorScheme.primary.withValues(alpha: 0.2),
-        border: Border.all(color: colorScheme.primary, width: 2.5),
-      ),
-      child: Center(
-        child: Container(
-          width: 12.w,
-          height: 12.h,
-          decoration: BoxDecoration(
-            shape: BoxShape.circle,
-            color: colorScheme.primary,
-            border: Border.all(color: Colors.white, width: 2),
+    return Center(
+      child: IgnorePointer(
+        child: AnimatedBuilder(
+          animation: animation,
+          builder: (context, child) {
+            return Opacity(
+              opacity: isVisible ? 0.6 : 0.0,
+              child: Transform.scale(
+                scale: animation.value,
+                child: child,
+              ),
+            );
+          },
+          child: Container(
+            width: 48.w,
+            height: 48.h,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              color: colorScheme.primary.withValues(alpha: 0.2),
+              border: Border.all(color: colorScheme.primary, width: 2.5),
+            ),
+            child: Center(
+              child: Container(
+                width: 12.w,
+                height: 12.h,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: colorScheme.primary,
+                  border: Border.all(color: Colors.white, width: 2),
+                ),
+              ),
+            ),
           ),
         ),
       ),
@@ -564,14 +604,14 @@ class LocationSearchBar extends StatelessWidget {
   final TextEditingController controller;
   final FocusNode focusNode;
   final ValueChanged<String> onChanged;
-  final bool isSearching;
+  final ValueNotifier<bool> isSearchingNotifier;
 
   const LocationSearchBar({
     super.key,
     required this.controller,
     required this.focusNode,
     required this.onChanged,
-    required this.isSearching,
+    required this.isSearchingNotifier,
   });
 
   @override
@@ -597,7 +637,7 @@ class LocationSearchBar extends StatelessWidget {
         onChanged: onChanged,
         style: TextStyle(fontSize: 14.sp, color: colorScheme.onSurface),
         decoration: InputDecoration(
-          hintText: 'Street, neighborhood, building...',
+          hintText: 'Search city, street, building...',
           hintStyle: TextStyle(
             fontSize: 14.sp,
             color: colorScheme.onSurface.withValues(alpha: 0.5),
@@ -607,8 +647,11 @@ class LocationSearchBar extends StatelessWidget {
             color: colorScheme.onSurface.withValues(alpha: 0.6),
             size: 20.sp,
           ),
-          suffixIcon: isSearching
-              ? Padding(
+          suffixIcon: ValueListenableBuilder<bool>(
+            valueListenable: isSearchingNotifier,
+            builder: (context, isSearching, child) {
+              if (isSearching) {
+                return Padding(
                   padding: EdgeInsets.all(12.w),
                   child: SizedBox(
                     width: 16.sp,
@@ -618,22 +661,29 @@ class LocationSearchBar extends StatelessWidget {
                       color: colorScheme.primary,
                     ),
                   ),
-                )
-              : controller.text.isNotEmpty
-                  ? IconButton(
-                      icon: Icon(
-                        Icons.clear,
-                        size: 18.sp,
-                        color: colorScheme.onSurface.withValues(alpha: 0.6),
-                      ),
-                      onPressed: () {
-                        controller.clear();
-                        onChanged('');
-                      },
-                    )
-                  : null,
+                );
+              }
+
+              if (controller.text.isNotEmpty) {
+                return IconButton(
+                  icon: Icon(
+                    Icons.clear,
+                    size: 18.sp,
+                    color: colorScheme.onSurface.withValues(alpha: 0.6),
+                  ),
+                  onPressed: () {
+                    controller.clear();
+                    onChanged('');
+                  },
+                );
+              }
+
+              return const SizedBox.shrink();
+            },
+          ),
           border: InputBorder.none,
-          contentPadding: EdgeInsets.symmetric(horizontal: 16.w, vertical: 12.h),
+          contentPadding:
+              EdgeInsets.symmetric(horizontal: 16.w, vertical: 12.h),
         ),
       ),
     );
@@ -679,39 +729,9 @@ class SearchResultsList extends StatelessWidget {
         ),
         itemBuilder: (context, index) {
           final result = results[index];
-          return ListTile(
-            leading: Container(
-              padding: EdgeInsets.all(8.w),
-              decoration: BoxDecoration(
-                color: colorScheme.primaryContainer.withValues(alpha: 0.5),
-                borderRadius: BorderRadius.circular(8.r),
-              ),
-              child: Icon(
-                Icons.location_on,
-                color: colorScheme.primary,
-                size: 18.sp,
-              ),
-            ),
-            title: Text(
-              result.title,
-              style: TextStyle(
-                fontSize: 14.sp,
-                fontWeight: FontWeight.w500,
-                color: colorScheme.onSurface,
-              ),
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-            ),
-            subtitle: Text(
-              result.subtitle,
-              style: TextStyle(
-                fontSize: 12.sp,
-                fontWeight: FontWeight.w400,
-                color: colorScheme.onSurface.withValues(alpha: 0.6),
-              ),
-            ),
+          return SearchResultTile(
+            result: result,
             onTap: () => onSelect(result),
-            contentPadding: EdgeInsets.symmetric(horizontal: 16.w, vertical: 4.h),
           );
         },
       ),
@@ -719,20 +739,71 @@ class SearchResultsList extends StatelessWidget {
   }
 }
 
+class SearchResultTile extends StatelessWidget {
+  final SearchResultItem result;
+  final VoidCallback onTap;
+
+  const SearchResultTile({
+    super.key,
+    required this.result,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+
+    return ListTile(
+      leading: Container(
+        padding: EdgeInsets.all(8.w),
+        decoration: BoxDecoration(
+          color: colorScheme.primaryContainer.withValues(alpha: 0.15),
+          borderRadius: BorderRadius.circular(8.r),
+        ),
+        child: Icon(
+          Icons.location_on,
+          color: colorScheme.primary,
+          size: 18.sp,
+        ),
+      ),
+      title: Text(
+        result.title,
+        style: TextStyle(
+          fontSize: 14.sp,
+          fontWeight: FontWeight.w500,
+          color: colorScheme.onSurface,
+        ),
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+      ),
+      subtitle: Text(
+        result.subtitle,
+        style: TextStyle(
+          fontSize: 12.sp,
+          fontWeight: FontWeight.w400,
+          color: colorScheme.onSurface.withValues(alpha: 0.6),
+        ),
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+      ),
+      onTap: onTap,
+      contentPadding: EdgeInsets.symmetric(horizontal: 16.w, vertical: 4.h),
+    );
+  }
+}
+
 class SelectedLocationCard extends StatelessWidget {
   final String address;
-  final bool isLoading;
+  final String details;
+  final ValueNotifier<bool> isLoadingNotifier;
   final VoidCallback onConfirm;
-  final TextEditingController addressController;
-  final ValueChanged<String> onAddressChanged;
 
   const SelectedLocationCard({
     super.key,
     required this.address,
-    required this.isLoading,
+    required this.details,
+    required this.isLoadingNotifier,
     required this.onConfirm,
-    required this.addressController,
-    required this.onAddressChanged,
   });
 
   @override
@@ -771,55 +842,99 @@ class SelectedLocationCard extends StatelessWidget {
             ],
           ),
           SizedBox(height: 12.h),
-          if (isLoading)
-            SizedBox(
-              height: 50.h,
-              child: Center(
-                child: CircularProgressIndicator(
-                  strokeWidth: 2.5,
-                  color: colorScheme.primary,
-                ),
-              ),
-            )
-          else
-            TextField(
-              controller: addressController,
-              onChanged: onAddressChanged,
-              style: TextStyle(fontSize: 14.sp, color: colorScheme.onSurface),
-              maxLines: 2,
-              decoration: InputDecoration(
-                hintText: 'Enter your delivery address...',
-                hintStyle: TextStyle(
-                  fontSize: 13.sp,
-                  color: colorScheme.onSurface.withValues(alpha: 0.5),
-                ),
-                filled: true,
-                fillColor: colorScheme.surfaceContainerHighest,
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(10.r),
-                  borderSide: BorderSide.none,
-                ),
-                contentPadding: EdgeInsets.symmetric(horizontal: 12.w, vertical: 10.h),
-              ),
-            ),
+          ValueListenableBuilder<bool>(
+            valueListenable: isLoadingNotifier,
+            builder: (context, isLoading, child) {
+              if (isLoading) {
+                return SizedBox(
+                  height: 60.h,
+                  child: Center(
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        CircularProgressIndicator(
+                          strokeWidth: 2.5,
+                          color: colorScheme.primary,
+                        ),
+                        SizedBox(height: 8.h),
+                        Text(
+                          'Determining address...',
+                          style: TextStyle(
+                            fontSize: 12.sp,
+                            color: colorScheme.onSurface.withValues(alpha: 0.6),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                );
+              }
+
+              return Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Container(
+                    width: double.infinity,
+                    padding: EdgeInsets.all(12.w),
+                    decoration: BoxDecoration(
+                      color: colorScheme.surfaceContainerHighest,
+                      borderRadius: BorderRadius.circular(10.r),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          address.isNotEmpty ? address : 'Select a location',
+                          style: TextStyle(
+                            fontSize: 14.sp,
+                            fontWeight: FontWeight.w500,
+                            color: colorScheme.onSurface,
+                          ),
+                        ),
+                        if (details.isNotEmpty) ...[
+                          SizedBox(height: 4.h),
+                          Text(
+                            details,
+                            style: TextStyle(
+                              fontSize: 12.sp,
+                              color:
+                                  colorScheme.onSurface.withValues(alpha: 0.6),
+                            ),
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ],
+                      ],
+                    ),
+                  ),
+                ],
+              );
+            },
+          ),
           SizedBox(height: 12.h),
           SizedBox(
             width: double.infinity,
-            child: ElevatedButton(
-              onPressed: isLoading ? null : onConfirm,
-              style: ElevatedButton.styleFrom(
-                padding: EdgeInsets.symmetric(vertical: 12.h),
-                backgroundColor: colorScheme.primary,
-                foregroundColor: colorScheme.onPrimary,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(10.r),
-                ),
-                elevation: 0,
-              ),
-              child: Text(
-                'Confirm Location',
-                style: TextStyle(fontSize: 14.sp, fontWeight: FontWeight.w600),
-              ),
+            child: ValueListenableBuilder<bool>(
+              valueListenable: isLoadingNotifier,
+              builder: (context, isLoading, child) {
+                return ElevatedButton(
+                  onPressed: isLoading ? null : onConfirm,
+                  style: ElevatedButton.styleFrom(
+                    padding: EdgeInsets.symmetric(vertical: 12.h),
+                    backgroundColor: colorScheme.primary,
+                    foregroundColor: colorScheme.onPrimary,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(10.r),
+                    ),
+                    elevation: 0,
+                  ),
+                  child: Text(
+                    'Confirm Location',
+                    style:
+                        TextStyle(fontSize: 14.sp, fontWeight: FontWeight.w600),
+                  ),
+                );
+              },
             ),
           ),
         ],
@@ -827,37 +942,3 @@ class SelectedLocationCard extends StatelessWidget {
     );
   }
 }
-
-class CurrentLocationFab extends StatelessWidget {
-  final bool isLoading;
-  final VoidCallback onPressed;
-
-  const CurrentLocationFab({
-    super.key,
-    required this.isLoading,
-    required this.onPressed,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final colorScheme = Theme.of(context).colorScheme;
-
-    return FloatingActionButton(
-      onPressed: isLoading ? null : onPressed,
-      backgroundColor: colorScheme.surface,
-      foregroundColor: colorScheme.primary,
-      elevation: 4,
-      child: isLoading
-          ? SizedBox(
-              width: 24.sp,
-              height: 24.sp,
-              child: CircularProgressIndicator(
-                strokeWidth: 2.5,
-                color: colorScheme.primary,
-              ),
-            )
-          : Icon(Icons.my_location, size: 24.sp),
-    );
-  }
-}
-

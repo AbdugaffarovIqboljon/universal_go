@@ -1441,8 +1441,8 @@ PODS:
     - Flutter
   - yandex_mapkit (0.0.1):
     - Flutter
-    - YandexMapsMobile (= 4.22.0-lite)
-  - YandexMapsMobile (4.22.0-lite)
+    - YandexMapsMobile (= 4.22.0-full)
+  - YandexMapsMobile (4.22.0-full)
 
 DEPENDENCIES:
   - cloud_firestore (from `.symlinks/plugins/cloud_firestore/ios`)
@@ -1564,9 +1564,9 @@ SPEC CHECKSUMS:
   shared_preferences_foundation: 5086985c1d43c5ba4d5e69a4e8083a389e2909e6
   sqflite_darwin: 5a7236e3b501866c1c9befc6771dfd73ffb8702d
   url_launcher_ios: bb13df5870e8c4234ca12609d04010a21be43dfa
-  yandex_mapkit: d98af28162446898790eaed6ae5d1d37b9ed1713
-  YandexMapsMobile: c73844c6096bbb240d1491adc511c2ef4a88d88d
+  yandex_mapkit: 37d92c2cfa973a9f930d02ae196c157616c9574e
+  YandexMapsMobile: 27e6e45425bb61f0be2dbc2bf02d4e64926691a9
 
-PODFILE CHECKSUM: 1857a7cdb7dfafe45f2b0e9a9af44644190f7506
+PODFILE CHECKSUM: 28bf39f309df530a42c9a41c4e02fb67ab49d3a3
 
 COCOAPODS: 1.16.2

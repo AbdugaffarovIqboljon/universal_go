@@ -8,6 +8,7 @@ import 'package:universal_go/features/cart/domain/entities/cart_item_entity.dart
 import 'package:universal_go/features/cart/presentation/bloc/cart_bloc.dart';
 import 'package:universal_go/features/cart/presentation/bloc/cart_event.dart';
 import 'package:universal_go/features/orders/presentation/pages/determine_location_page.dart';
+import 'package:universal_go/shared/widgets/gradient_app_bar.dart';
 
 class CustomerCheckoutPage extends StatefulWidget {
   final CartEntity cart;
@@ -65,18 +66,17 @@ class _CustomerCheckoutPageState extends State<CustomerCheckoutPage> {
       return;
     }
 
-    // Simulate promo code validation
     setState(() {
       if (code == 'SAVE10') {
-        promoDiscount = subtotal * 0.1; // 10% discount
+        promoDiscount = subtotal * 0.1;
         appliedPromoCode = code;
         _showMessage('Promo code applied! 10% discount');
       } else if (code == 'SAVE5000') {
-        promoDiscount = 5000; // Fixed 5000 UZS discount
+        promoDiscount = 5000;
         appliedPromoCode = code;
         _showMessage('Promo code applied! 5,000 UZS discount');
       } else if (code == 'FREESHIP') {
-        promoDiscount = deliveryFee; // Free shipping
+        promoDiscount = deliveryFee;
         appliedPromoCode = code;
         _showMessage('Promo code applied! Free shipping');
       } else {
@@ -112,7 +112,6 @@ class _CustomerCheckoutPageState extends State<CustomerCheckoutPage> {
       return;
     }
 
-    // Clear cart after successful order placement
     context.read<CartBloc>().add(ClearCart());
 
     Navigator.pushNamedAndRemoveUntil(
@@ -143,25 +142,13 @@ class _CustomerCheckoutPageState extends State<CustomerCheckoutPage> {
 
     return Scaffold(
       backgroundColor: theme.scaffoldBackgroundColor,
-      appBar: AppBar(
-        backgroundColor: theme.scaffoldBackgroundColor,
-        elevation: 0,
-        scrolledUnderElevation: 0,
-        leading: IconButton(
-          icon: Icon(Icons.arrow_back, color: theme.colorScheme.onSurface),
-          onPressed: () => Navigator.pop(context),
-        ),
-        title: Text(
-          'Checkout',
-          style: theme.textTheme.titleLarge?.copyWith(
-            fontSize: 20.sp,
-            fontWeight: FontWeight.w700,
-          ),
-        ),
-        centerTitle: true,
-      ),
       body: Column(
         children: [
+          GradientAppBar(
+            title: "Checkout",
+            subtitle: "submit your order",
+            showBackButton: true,
+          ),
           Expanded(
             child: SingleChildScrollView(
               padding: EdgeInsets.symmetric(horizontal: 16.w),
@@ -200,7 +187,7 @@ class _CustomerCheckoutPageState extends State<CustomerCheckoutPage> {
                     onTap: _navigateToLocationPicker,
                   ),
 
-                  SizedBox(height: 24.h),
+                  SizedBox(height: 16.h),
 
                   // Products Section
                   Text(
@@ -211,9 +198,9 @@ class _CustomerCheckoutPageState extends State<CustomerCheckoutPage> {
                     ),
                   ),
                   SizedBox(height: 12.h),
-
                   // Product List
                   ListView.builder(
+                    padding: EdgeInsets.symmetric(vertical: 12.h),
                     shrinkWrap: true,
                     physics: const NeverScrollableScrollPhysics(),
                     itemCount: widget.cart.items.length,
@@ -226,8 +213,6 @@ class _CustomerCheckoutPageState extends State<CustomerCheckoutPage> {
                     },
                   ),
 
-                  SizedBox(height: 16.h),
-
                   // Promo Code Section
                   PromoCodeInput(
                     controller: _promoController,
@@ -235,22 +220,27 @@ class _CustomerCheckoutPageState extends State<CustomerCheckoutPage> {
                     onApply: _applyPromoCode,
                     onRemove: _removePromoCode,
                   ),
+
+                  SizedBox(height: 24.h),
+
+                  // Receipt/Cheque Style Price Breakdown
+                  ReceiptCard(
+                    subtotal: subtotal,
+                    shipping: shipping,
+                    commission: commission,
+                    discount: promoDiscount,
+                    total: total,
+                    formatPrice: _formatPrice,
+                    onConfirm: _placeOrder,
+                    isEnabled: selectedLocation != null,
+                  ),
+
                   SizedBox(height: 24.h),
                 ],
               ),
             ),
           ),
         ],
-      ),
-      bottomNavigationBar: PriceBreakdown(
-        subtotal: subtotal,
-        shipping: shipping,
-        commission: commission,
-        discount: promoDiscount,
-        total: total,
-        formatPrice: _formatPrice,
-        onPressed: _placeOrder,
-        isEnabled: selectedLocation != null,
       ),
     );
   }
@@ -379,7 +369,7 @@ class PromoCodeInput extends StatelessWidget {
       padding: EdgeInsets.all(16.sp),
       decoration: BoxDecoration(
         color: theme.colorScheme.surface,
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(16.r),
         border: Border.all(
           color: theme.dividerColor.withValues(alpha: 0.1),
           width: 1,
@@ -466,17 +456,17 @@ class PromoCodeInput extends StatelessWidget {
   }
 }
 
-class PriceBreakdown extends StatelessWidget {
+class ReceiptCard extends StatelessWidget {
   final double subtotal;
   final double shipping;
   final double commission;
   final double discount;
   final double total;
   final String Function(double) formatPrice;
-  final VoidCallback onPressed;
+  final VoidCallback onConfirm;
   final bool isEnabled;
 
-  const PriceBreakdown({
+  const ReceiptCard({
     super.key,
     required this.subtotal,
     required this.shipping,
@@ -484,108 +474,183 @@ class PriceBreakdown extends StatelessWidget {
     required this.discount,
     required this.total,
     required this.formatPrice,
-    required this.onPressed,
+    required this.onConfirm,
     required this.isEnabled,
   });
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
 
-    return SafeArea(
-      child: Container(
-        padding: EdgeInsets.only(left: 16.w, right: 16.w, top: 16.h),
-        decoration: BoxDecoration(
-          color: theme.colorScheme.surface,
-          borderRadius: BorderRadius.only(
-            topLeft: Radius.circular(24.r),
-            topRight: Radius.circular(24.r),
-          ),
-          boxShadow: [
-            BoxShadow(
-              color: theme.shadowColor.withValues(alpha: 0.05),
-              blurRadius: 10,
-              offset: const Offset(0, -2),
-            ),
-          ],
+    return Container(
+      decoration: BoxDecoration(
+        color: isDark ? theme.colorScheme.surface : Colors.white,
+        borderRadius: BorderRadius.circular(20.r),
+        border: Border.all(
+          color: theme.dividerColor.withValues(alpha: 0.08),
+          width: 1,
         ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            PriceRow(
-              label: 'Subtotal',
-              value: '${formatPrice(subtotal)} UZS',
-            ),
-            SizedBox(height: 12.h),
-            PriceRow(
-              label: 'Shipping',
-              value: '${formatPrice(shipping)} UZS',
-            ),
-            if (commission > 0) ...[
-              SizedBox(height: 12.h),
-              PriceRow(
-                label: 'Service Fee',
-                value: '${formatPrice(commission)} UZS',
-              ),
-            ],
-            if (discount > 0) ...[
-              SizedBox(height: 12.h),
-              PriceRow(
-                label: 'Discount',
-                value: '- ${formatPrice(discount)} UZS',
-                valueColor: Colors.green,
-              ),
-            ],
-            SizedBox(height: 16.h),
-            CustomPaint(
-              size: Size(double.infinity, 1.h),
-              painter: DashedLinePainter(
-                color: theme.colorScheme.onSurface.withValues(alpha: 0.2),
+      ),
+      child: Column(
+        children: [
+          // Receipt Header
+          Container(
+            padding: EdgeInsets.all(16.w),
+            decoration: BoxDecoration(
+              color: isDark
+                  ? theme.colorScheme.surfaceContainerHighest
+                      .withValues(alpha: 0.3)
+                  : theme.primaryColor.withValues(alpha: 0.05),
+              borderRadius: BorderRadius.only(
+                topLeft: Radius.circular(20.r),
+                topRight: Radius.circular(20.r),
               ),
             ),
-            SizedBox(height: 16.h),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            child: Row(
               children: [
-                Text(
-                  'Total amount',
-                  style: theme.textTheme.bodyLarge?.copyWith(
-                    fontSize: 15.sp,
-                    fontWeight: FontWeight.w500,
-                    color: theme.colorScheme.onSurface.withValues(alpha: 0.6),
-                  ),
+                Icon(
+                  Icons.receipt_long,
+                  size: 24.sp,
+                  color: theme.primaryColor,
                 ),
+                SizedBox(width: 12.w),
                 Text(
-                  '${formatPrice(total)} UZS',
+                  'Order Summary',
                   style: theme.textTheme.titleLarge?.copyWith(
-                    fontSize: 20.sp,
+                    fontSize: 18.sp,
                     fontWeight: FontWeight.w700,
                   ),
                 ),
               ],
             ),
-            SizedBox(height: 12.h),
-            ConfirmButton(
-              onPressed: onPressed,
-              isEnabled: isEnabled,
+          ),
+
+          // Dashed separator
+          CustomPaint(
+            size: Size(double.infinity, 1.h),
+            painter: DashedLinePainter(
+              color: theme.dividerColor.withValues(alpha: 0.3),
             ),
-          ],
-        ),
+          ),
+
+          // Price details
+          Padding(
+            padding: EdgeInsets.all(20.w),
+            child: Column(
+              children: [
+                ReceiptRow(
+                  label: 'Subtotal',
+                  value: '${formatPrice(subtotal)} UZS',
+                ),
+                SizedBox(height: 14.h),
+                ReceiptRow(
+                  label: 'Shipping',
+                  value: '${formatPrice(shipping)} UZS',
+                ),
+                if (commission > 0) ...[
+                  SizedBox(height: 14.h),
+                  ReceiptRow(
+                    label: 'Service Fee',
+                    value: '${formatPrice(commission)} UZS',
+                  ),
+                ],
+                if (discount > 0) ...[
+                  SizedBox(height: 14.h),
+                  ReceiptRow(
+                    label: 'Discount',
+                    value: '- ${formatPrice(discount)} UZS',
+                    valueColor: Colors.green,
+                    isDiscount: true,
+                  ),
+                ],
+                SizedBox(height: 20.h),
+
+                // Dashed separator
+                CustomPaint(
+                  size: Size(double.infinity, 1.h),
+                  painter: DashedLinePainter(
+                    color: theme.dividerColor.withValues(alpha: 0.3),
+                  ),
+                ),
+
+                SizedBox(height: 20.h),
+
+                // Total amount
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  crossAxisAlignment: CrossAxisAlignment.baseline,
+                  textBaseline: TextBaseline.alphabetic,
+                  children: [
+                    Text(
+                      'Total Amount',
+                      style: theme.textTheme.titleLarge?.copyWith(
+                        fontSize: 16.sp,
+                        fontWeight: FontWeight.w500,
+                        color:
+                            theme.colorScheme.onSurface.withValues(alpha: 0.7),
+                      ),
+                    ),
+                    Text(
+                      '${formatPrice(total)} UZS',
+                      style: theme.textTheme.titleLarge?.copyWith(
+                        fontSize: 18.sp,
+                        fontWeight: FontWeight.w700,
+                        color: theme.primaryColor,
+                      ),
+                    ),
+                  ],
+                ),
+
+                SizedBox(height: 24.h),
+
+                // Confirm button
+                SizedBox(
+                  width: double.infinity,
+                  child: ElevatedButton(
+                    onPressed: isEnabled ? onConfirm : null,
+                    style: ElevatedButton.styleFrom(
+                      padding: EdgeInsets.symmetric(vertical: 12.h),
+                      backgroundColor: theme.primaryColor,
+                      foregroundColor: Colors.white,
+                      disabledBackgroundColor:
+                          theme.colorScheme.onSurface.withValues(alpha: 0.12),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(14.r),
+                      ),
+                      elevation: 0,
+                    ),
+                    child: Text(
+                      'Confirm Order',
+                      style: theme.textTheme.titleMedium?.copyWith(
+                        fontSize: 14.sp,
+                        fontWeight: FontWeight.w600,
+                        color: Colors.white,
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
       ),
     );
   }
 }
 
-class PriceRow extends StatelessWidget {
+class ReceiptRow extends StatelessWidget {
   final String label;
   final String value;
   final Color? valueColor;
+  final bool isDiscount;
 
-  const PriceRow({
+  const ReceiptRow({
     super.key,
     required this.label,
     required this.value,
     this.valueColor,
+    this.isDiscount = false,
   });
 
   @override
@@ -598,14 +663,15 @@ class PriceRow extends StatelessWidget {
         Text(
           label,
           style: theme.textTheme.bodyMedium?.copyWith(
-            fontSize: 15.sp,
+            fontSize: 14.sp,
+            fontWeight: FontWeight.w500,
             color: theme.colorScheme.onSurface.withValues(alpha: 0.6),
           ),
         ),
         Text(
           value,
-          style: theme.textTheme.bodyMedium?.copyWith(
-            fontSize: 15.sp,
+          style: theme.textTheme.bodyLarge?.copyWith(
+            fontSize: 14.sp,
             fontWeight: FontWeight.w600,
             color: valueColor ?? theme.colorScheme.onSurface,
           ),
@@ -618,7 +684,7 @@ class PriceRow extends StatelessWidget {
 class DashedLinePainter extends CustomPainter {
   final Color color;
 
-  DashedLinePainter({required this.color});
+  const DashedLinePainter({required this.color});
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -626,8 +692,8 @@ class DashedLinePainter extends CustomPainter {
       ..color = color
       ..strokeWidth = 1;
 
-    const dashWidth = 5;
-    const dashSpace = 5;
+    const dashWidth = 5.0;
+    const dashSpace = 5.0;
     double startX = 0;
 
     while (startX < size.width) {
@@ -641,48 +707,8 @@ class DashedLinePainter extends CustomPainter {
   }
 
   @override
-  bool shouldRepaint(CustomPainter oldDelegate) => false;
-}
-
-class ConfirmButton extends StatelessWidget {
-  final VoidCallback onPressed;
-  final bool isEnabled;
-
-  const ConfirmButton({
-    super.key,
-    required this.onPressed,
-    this.isEnabled = true,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-
-    return SizedBox(
-      width: double.infinity,
-      child: ElevatedButton(
-        onPressed: isEnabled ? onPressed : null,
-        style: ElevatedButton.styleFrom(
-          padding: EdgeInsets.symmetric(vertical: 12.h),
-          backgroundColor: theme.primaryColor,
-          foregroundColor: theme.colorScheme.surface,
-          
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(12.r),
-          ),
-          elevation: 0,
-        ),
-        child: Text(
-          'Confirm',
-          style: theme.textTheme.titleMedium?.copyWith(
-            fontSize: 15.sp,
-            fontWeight: FontWeight.w500,
-            color: theme.colorScheme.surface,
-          ),
-        ),
-      ),
-    );
-  }
+  bool shouldRepaint(covariant DashedLinePainter oldDelegate) =>
+      color != oldDelegate.color;
 }
 
 class CheckoutCartItemTile extends StatelessWidget {
@@ -701,8 +727,8 @@ class CheckoutCartItemTile extends StatelessWidget {
     final isDark = theme.brightness == Brightness.dark;
     final product = item.product;
 
-    return Container(
-      margin: EdgeInsets.only(bottom: 12.h),
+    return Padding(
+      padding: EdgeInsets.only(bottom: 12.h),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -726,27 +752,41 @@ class CheckoutCartItemTile extends StatelessWidget {
             ),
           ),
           SizedBox(width: 16.w),
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                product.name,
-                style: theme.textTheme.titleMedium?.copyWith(
-                  fontSize: 14.sp,
-                  fontWeight: FontWeight.w600,
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  product.name,
+                  style: theme.textTheme.titleMedium?.copyWith(
+                    fontSize: 14.sp,
+                    fontWeight: FontWeight.w600,
+                  ),
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
                 ),
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-              ),
-              SizedBox(height: 6.h),
-              Text(
-                '${formatPrice(product.price)} UZS',
-                style: theme.textTheme.titleMedium?.copyWith(
-                  fontSize: 12.sp,
-                  fontWeight: FontWeight.w500,
+                SizedBox(height: 6.h),
+                Row(
+                  children: [
+                    Text(
+                      '${formatPrice(product.price)} UZS',
+                      style: theme.textTheme.titleMedium?.copyWith(
+                        fontSize: 12.sp,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                    Text(
+                      ' × ${item.quantity}',
+                      style: theme.textTheme.bodyMedium?.copyWith(
+                        fontSize: 12.sp,
+                        color:
+                            theme.colorScheme.onSurface.withValues(alpha: 0.5),
+                      ),
+                    ),
+                  ],
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
         ],
       ),

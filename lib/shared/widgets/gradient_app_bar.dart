@@ -51,7 +51,7 @@ class GradientAppBar extends StatelessWidget {
         ],
       ),
       child: Padding(
-        padding: EdgeInsets.fromLTRB(24.w, 12.h, 24.w, 24.h),
+        padding: EdgeInsets.symmetric(horizontal: 16.w, vertical: 12.h),
         child: Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           crossAxisAlignment: CrossAxisAlignment.center,

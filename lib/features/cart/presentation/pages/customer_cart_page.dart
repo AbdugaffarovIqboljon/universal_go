@@ -8,6 +8,7 @@ import 'package:universal_go/features/cart/presentation/bloc/cart_event.dart';
 import 'package:universal_go/features/cart/presentation/bloc/cart_state.dart';
 import 'package:universal_go/features/cart/presentation/widgets/cart_item_tile.dart';
 import 'package:universal_go/features/cart/presentation/widgets/cart_bottom_bar.dart';
+import 'package:universal_go/shared/widgets/gradient_app_bar.dart';
 
 class CustomerCartPage extends StatefulWidget {
   const CustomerCartPage({super.key});
@@ -69,37 +70,6 @@ class _CustomerCartPageState extends State<CustomerCartPage> {
 
     return Scaffold(
       backgroundColor: theme.colorScheme.surface,
-      appBar: AppBar(
-        title: Text(
-              'Cart',
-              style: theme.textTheme.titleLarge?.copyWith(
-                fontSize: 20.sp,
-                fontWeight: FontWeight.w700,
-              ),
-            ),
-        centerTitle: true,
-        backgroundColor: theme.scaffoldBackgroundColor,
-        foregroundColor: theme.colorScheme.onSurface,
-        elevation: 0,
-        actions: [
-          BlocBuilder<CartBloc, CartState>(
-            builder: (context, state) {
-              if (state is CartLoaded && !state.cart.isEmpty) {
-                return IconButton(
-                  icon: Icon(
-                    CupertinoIcons.delete,
-                    color: theme.colorScheme.onSurface,
-                    size: 21.sp,
-                  ),
-                  onPressed: _handleClearCart,
-                  tooltip: 'Clear cart',
-                );
-              }
-              return const SizedBox.shrink();
-            },
-          ),
-        ],
-      ),
       body: BlocBuilder<CartBloc, CartState>(
         builder: (context, state) {
           if (state is CartLoading) {
@@ -147,6 +117,15 @@ class _CustomerCartPageState extends State<CustomerCartPage> {
 
             return Column(
               children: [
+                GradientAppBar(
+                  title: "Cart",
+                  subtitle: "${state.cart.items.length} items",
+                  actions: [
+                    ClearCartActionButton(
+                      onPressed: _handleClearCart,
+                    ),
+                  ],
+                ),
                 Expanded(
                   child: ListView.builder(
                     padding: EdgeInsets.symmetric(horizontal: 12.w, vertical: 8.h),
@@ -200,6 +179,30 @@ class _CustomerCartPageState extends State<CustomerCartPage> {
           return const SizedBox.shrink();
         },
       ),
+    );
+  }
+}
+
+class ClearCartActionButton extends StatelessWidget {
+  final VoidCallback onPressed;
+
+  const ClearCartActionButton({
+    super.key,
+    required this.onPressed,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    
+    return IconButton(
+      icon: Icon(
+        CupertinoIcons.delete,
+        color: theme.colorScheme.surface,
+        size: 21.sp,
+      ),
+      onPressed: onPressed,
+      tooltip: 'Clear cart',
     );
   }
 }

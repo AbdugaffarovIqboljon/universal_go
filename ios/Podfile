@@ -4,6 +4,9 @@ platform :ios, '16.0'
 # CocoaPods analytics sends network stats synchronously affecting flutter build latency.
 ENV['COCOAPODS_DISABLE_STATS'] = 'true'
 
+# CRITICAL: Enable full variant for search functionality
+ENV['YANDEX_MAPKIT_VARIANT'] = 'full'
+
 project 'Runner', {
   'Debug' => :debug,
   'Profile' => :release,
@@ -39,5 +42,10 @@ end
 post_install do |installer|
   installer.pods_project.targets.each do |target|
     flutter_additional_ios_build_settings(target)
+    
+    # Ensure minimum deployment target
+    target.build_configurations.each do |config|
+      config.build_settings['IPHONEOS_DEPLOYMENT_TARGET'] = '16.0'
+    end
   end
 end
