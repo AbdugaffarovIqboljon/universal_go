@@ -8,6 +8,7 @@ import 'package:universal_go/injection_container.dart';
 import 'package:universal_go/core/providers/theme_provider.dart';
 
 void main() async {
+  
   WidgetsFlutterBinding.ensureInitialized();
   // Initialize Firebase (with error handling)
   try {
@@ -23,6 +24,7 @@ void main() async {
 
   // Configure dependencies
   await configureDependencies();
+
 
   runApp(
     ChangeNotifierProvider(

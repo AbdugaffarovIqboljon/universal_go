@@ -35,7 +35,7 @@
             android:name="flutterEmbedding"
             android:value="2" />
         <meta-data
-            android:name="com.yandex.android.maps.apikey"
+            android:name="com.yandex.mapkit.ApiKey"
             android:value="${YANDEX_API_KEY}" />
     </application>
     <!-- Required to query activities that can process text, see:

@@ -1,7 +1,12 @@
 import 'dart:async';
+import 'dart:ui' as ui;
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:geolocator/geolocator.dart';
+import 'package:universal_go/core/services/map/cluster_stores_service.dart';
+import 'package:universal_go/core/utils/map_clustering_helper.dart';
+import 'package:universal_go/features/customer/data/models/map_store_cluster.dart';
 import 'package:universal_go/features/customer/presentation/widgets/store_info_card.dart';
 import 'package:universal_go/features/shops/data/models/store_model.dart';
 import 'package:universal_go/shared/widgets/current_location_fab.dart';
@@ -26,11 +31,17 @@ class MapFullScreenPage extends StatefulWidget {
   State<MapFullScreenPage> createState() => _MapFullScreenPageState();
 }
 
-class _MapFullScreenPageState extends State<MapFullScreenPage>
-    with SingleTickerProviderStateMixin {
+class _MapFullScreenPageState extends State<MapFullScreenPage> {
   YandexMapController? _mapController;
   bool _isDisposed = false;
 
+  // Clustering
+  final _clusteringService = MapClusteringService();
+  List<StoreCluster> _currentClusters = [];
+  final Map<int, Uint8List> _clusterMarkerCache = {};
+  final Set<int> _generatingMarkers = {};
+
+  // Core state
   final ValueNotifier<List<PlacemarkMapObject>> _placemarks =
       ValueNotifier<List<PlacemarkMapObject>>([]);
   final ValueNotifier<bool> _isLoadingLocation = ValueNotifier<bool>(false);
@@ -38,6 +49,7 @@ class _MapFullScreenPageState extends State<MapFullScreenPage>
       ValueNotifier<Position?>(null);
   final ValueNotifier<StoreModel?> _selectedStore =
       ValueNotifier<StoreModel?>(null);
+  final ValueNotifier<double> _currentZoom = ValueNotifier<double>(11.5);
 
   // Search state
   final ValueNotifier<String> _searchQuery = ValueNotifier<String>('');
@@ -48,44 +60,20 @@ class _MapFullScreenPageState extends State<MapFullScreenPage>
   final TextEditingController _searchController = TextEditingController();
   final FocusNode _searchFocusNode = FocusNode();
   Timer? _debounceTimer;
+  Timer? _zoomDebounceTimer;
   PlacemarkMapObject? _searchMarker;
+  double _lastProcessedZoom = 11.5;
 
   SearchSession? _activeSearchSession;
   bool _searchAvailable = true;
-
-  // Animation for active marker
-  late AnimationController _markerAnimationController;
-  late Animation<double> _markerScaleAnimation;
 
   @override
   void initState() {
     super.initState();
     _userPositionNotifier.value = widget.userPosition;
 
-    // Initialize marker animation - continuous bounce
-    _markerAnimationController = AnimationController(
-      duration: const Duration(milliseconds: 800),
-      vsync: this,
-    );
-
-    _markerScaleAnimation = TweenSequence<double>([
-      TweenSequenceItem(
-        tween: Tween<double>(begin: 1.0, end: 1.15)
-            .chain(CurveTween(curve: Curves.easeOut)),
-        weight: 50,
-      ),
-      TweenSequenceItem(
-        tween: Tween<double>(begin: 1.15, end: 1.0)
-            .chain(CurveTween(curve: Curves.easeIn)),
-        weight: 50,
-      ),
-    ]).animate(_markerAnimationController);
-
-    _markerScaleAnimation.addListener(() {
-      if (!_isDisposed && _selectedStore.value != null) {
-        _addShopMarkers();
-      }
-    });
+    _initializeClustering();
+    _generateEssentialClusterMarkers();
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (widget.userPosition != null) {
@@ -96,10 +84,115 @@ class _MapFullScreenPageState extends State<MapFullScreenPage>
     _searchController.addListener(_onSearchChanged);
   }
 
+  Future<void> _initializeClustering() async {
+    await _clusteringService.initialize();
+    _performClustering(_currentZoom.value);
+  }
+
+  Future<void> _performClustering(double zoom) async {
+    final clusters = await _clusteringService.clusterStores(
+      stores: widget.stores,
+      zoom: zoom,
+    );
+
+    if (!_isDisposed && mounted) {
+      _currentClusters = clusters;
+      _addShopMarkers();
+    }
+  }
+
+  Future<void> _generateEssentialClusterMarkers() async {
+    const essentialSizes = [2, 3, 4, 5, 10, 15, 20, 25];
+
+    for (final count in essentialSizes) {
+      if (_clusterMarkerCache.containsKey(count)) continue;
+      final bytes = await _createClusterMarkerBytes(count);
+      if (!_isDisposed && mounted) {
+        _clusterMarkerCache[count] = bytes;
+      }
+    }
+  }
+
+  Future<Uint8List> _getOrCreateClusterMarker(int count) async {
+    if (_clusterMarkerCache.containsKey(count)) {
+      return _clusterMarkerCache[count]!;
+    }
+
+    if (_generatingMarkers.contains(count)) {
+      await Future.delayed(const Duration(milliseconds: 50));
+      return _getOrCreateClusterMarker(count);
+    }
+
+    _generatingMarkers.add(count);
+    final bytes = await _createClusterMarkerBytes(count);
+    _generatingMarkers.remove(count);
+
+    if (!_isDisposed && mounted) {
+      _clusterMarkerCache[count] = bytes;
+    }
+
+    return bytes;
+  }
+
+  Future<Uint8List> _createClusterMarkerBytes(int count) async {
+    final recorder = ui.PictureRecorder();
+    final canvas = Canvas(recorder);
+
+    const double size = 56.0;
+    const center = Offset(size / 2, size / 2);
+    const radius = size / 2;
+
+    final shadowPaint = Paint()
+      ..color = Colors.black.withValues(alpha: 0.2)
+      ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 3);
+    canvas.drawCircle(center.translate(0, 1.5), radius, shadowPaint);
+
+    final paint = Paint()
+      ..color = const Color(0xFF6B4EFF)
+      ..style = PaintingStyle.fill;
+    canvas.drawCircle(center, radius, paint);
+
+    final borderPaint = Paint()
+      ..color = Colors.white
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 2.5;
+    canvas.drawCircle(center, radius, borderPaint);
+
+    final fontSize = count > 99 ? 16.0 : (count > 9 ? 18.0 : 20.0);
+    final textPainter = TextPainter(
+      text: TextSpan(
+        text: count > 999 ? '999+' : count.toString(),
+        style: TextStyle(
+          color: Colors.white,
+          fontSize: fontSize,
+          fontWeight: FontWeight.bold,
+          letterSpacing: -0.5,
+        ),
+      ),
+      textDirection: TextDirection.ltr,
+    );
+    textPainter.layout();
+    textPainter.paint(
+      canvas,
+      Offset(
+        center.dx - textPainter.width / 2,
+        center.dy - textPainter.height / 2,
+      ),
+    );
+
+    final picture = recorder.endRecording();
+    final image = await picture.toImage(size.toInt(), size.toInt());
+    final byteData = await image.toByteData(format: ui.ImageByteFormat.png);
+    return byteData!.buffer.asUint8List();
+  }
+
   @override
   void dispose() {
     _isDisposed = true;
-    _markerAnimationController.dispose();
+    _zoomDebounceTimer?.cancel();
+    _clusteringService.dispose();
+    _clusterMarkerCache.clear();
+    _generatingMarkers.clear();
     _placemarks.dispose();
     _isLoadingLocation.dispose();
     _userPositionNotifier.dispose();
@@ -107,11 +200,13 @@ class _MapFullScreenPageState extends State<MapFullScreenPage>
     _searchQuery.dispose();
     _searchResults.dispose();
     _isSearching.dispose();
+    _currentZoom.dispose();
     _searchController.dispose();
     _searchFocusNode.dispose();
     _debounceTimer?.cancel();
     _activeSearchSession?.close();
     _mapController?.dispose();
+    MapClusteringHelper.clearCache();
     super.dispose();
   }
 
@@ -119,6 +214,38 @@ class _MapFullScreenPageState extends State<MapFullScreenPage>
     if (_isDisposed) return;
     _mapController = controller;
     _addShopMarkers();
+  }
+
+  void _onZoomChanged(double newZoom) {
+    _currentZoom.value = newZoom;
+
+    _zoomDebounceTimer?.cancel();
+    _zoomDebounceTimer = Timer(const Duration(milliseconds: 350), () {
+      if (!_isDisposed &&
+          mounted &&
+          _shouldRecalculateClusters(_lastProcessedZoom, newZoom)) {
+        _lastProcessedZoom = newZoom;
+        _performClustering(newZoom);
+      }
+    });
+  }
+
+  bool _shouldRecalculateClusters(double oldZoom, double newZoom) {
+    const mainBoundary = MapClusteringHelper.individualStoreThreshold;
+
+    final wasAbove = oldZoom >= mainBoundary;
+    final isAbove = newZoom >= mainBoundary;
+
+    if (wasAbove != isAbove) return true;
+
+    const boundaries = [11.0, 12.5, 14.0];
+    for (final boundary in boundaries) {
+      final wasBelow = oldZoom < boundary;
+      final isBelow = newZoom < boundary;
+      if (wasBelow != isBelow) return true;
+    }
+
+    return (newZoom - oldZoom).abs() > 1.0;
   }
 
   void _addShopMarkers() {
@@ -140,7 +267,7 @@ class _MapFullScreenPageState extends State<MapFullScreenPage>
             image: BitmapDescriptor.fromAssetImage(
               'assets/icons/ic_user_location.png',
             ),
-            scale: 0.3,
+            scale: 0.28,
             anchor: const Offset(0.5, 0.5),
             rotationType: RotationType.noRotation,
           ),
@@ -149,31 +276,35 @@ class _MapFullScreenPageState extends State<MapFullScreenPage>
       placemarks.add(userPlacemark);
     }
 
-    // Add search marker if exists
     if (_searchMarker != null) {
       placemarks.add(_searchMarker!);
     }
 
     final selectedStore = _selectedStore.value;
+    final showIndividual =
+        MapClusteringHelper.shouldShowIndividualStores(_currentZoom.value);
 
-    for (final store in widget.stores) {
-      final isSelected = selectedStore?.id == store.id;
-      final hasDeal = widget.storeDeals.containsKey(store.id);
+    for (final cluster in _currentClusters) {
+      if (showIndividual && cluster.count == 1) {
+        final store = cluster.stores.first;
+        final isSelected = selectedStore?.id == store.id;
+        final hasDeal = widget.storeDeals.containsKey(store.id);
 
-      if (isSelected) {
-        // Add active marker with animation
-        final animationScale = _markerScaleAnimation.value;
+        final iconAsset = isSelected
+            ? 'assets/icons/ic_active_marker.png'
+            : (hasDeal
+                ? 'assets/icons/ic_store_deal_marker.png'
+                : 'assets/icons/ic_store_marker.png');
+
         final placemark = PlacemarkMapObject(
-          mapId: MapObjectId('store_active_${store.id}'),
+          mapId: MapObjectId('store_${store.id}'),
           point: Point(latitude: store.latitude, longitude: store.longitude),
           opacity: 1.0,
           consumeTapEvents: true,
           icon: PlacemarkIcon.single(
             PlacemarkIconStyle(
-              image: BitmapDescriptor.fromAssetImage(
-                'assets/icons/ic_active_marker.png',
-              ),
-              scale: 0.45 * animationScale,
+              image: BitmapDescriptor.fromAssetImage(iconAsset),
+              scale: 0.28,
               anchor: const Offset(0.5, 1.0),
               rotationType: RotationType.noRotation,
             ),
@@ -184,29 +315,39 @@ class _MapFullScreenPageState extends State<MapFullScreenPage>
         );
         placemarks.add(placemark);
       } else {
-        // Regular marker
-        final placemark = PlacemarkMapObject(
-          mapId: MapObjectId('store_${store.id}'),
-          point: Point(latitude: store.latitude, longitude: store.longitude),
-          opacity: 1.0,
-          consumeTapEvents: true,
-          icon: PlacemarkIcon.single(
-            PlacemarkIconStyle(
-              image: BitmapDescriptor.fromAssetImage(
-                hasDeal
-                    ? 'assets/icons/ic_store_deal_marker.png'
-                    : 'assets/icons/ic_store_marker.png',
+        _getOrCreateClusterMarker(cluster.count).then((markerBytes) {
+          if (_isDisposed || !mounted) return;
+
+          final updatedPlacemarks =
+              List<PlacemarkMapObject>.from(_placemarks.value);
+          updatedPlacemarks.add(
+            PlacemarkMapObject(
+              mapId: MapObjectId('cluster_${cluster.id}'),
+              point: Point(
+                latitude: cluster.latitude,
+                longitude: cluster.longitude,
               ),
-              scale: hasDeal ? 0.4 : 0.35,
-              anchor: const Offset(0.5, 1.0),
-              rotationType: RotationType.noRotation,
+              opacity: 1.0,
+              consumeTapEvents: true,
+              icon: PlacemarkIcon.single(
+                PlacemarkIconStyle(
+                  image: BitmapDescriptor.fromBytes(markerBytes),
+                  scale: 1.0,
+                  anchor: const Offset(0.5, 0.5),
+                  rotationType: RotationType.noRotation,
+                ),
+              ),
+              onTap: (_, __) {
+                if (cluster.count == 1) {
+                  _onMarkerTap(cluster.stores.first);
+                } else {
+                  _onClusterTap(cluster);
+                }
+              },
             ),
-          ),
-          onTap: (PlacemarkMapObject self, Point point) {
-            _onMarkerTap(store);
-          },
-        );
-        placemarks.add(placemark);
+          );
+          _placemarks.value = updatedPlacemarks;
+        });
       }
     }
 
@@ -216,36 +357,76 @@ class _MapFullScreenPageState extends State<MapFullScreenPage>
   void _onMarkerTap(StoreModel store) {
     if (_isDisposed || !mounted) return;
 
-    // Set selected store and start continuous animation
     _selectedStore.value = store;
-    _markerAnimationController.repeat();
+
+    // Refresh markers to show active state
+    _addShopMarkers();
 
     if (_mapController != null && !_isDisposed && mounted) {
-      try {
-        _mapController!.moveCamera(
-          CameraUpdate.newCameraPosition(
-            CameraPosition(
-              target:
-                  Point(latitude: store.latitude, longitude: store.longitude),
-              zoom: 16.5,
-            ),
+      final offsetLatitude = store.latitude + 0.0005;
+      _mapController!.moveCamera(
+        CameraUpdate.newCameraPosition(
+          CameraPosition(
+            target: Point(latitude: offsetLatitude, longitude: store.longitude),
+            zoom: 16.5,
           ),
-          animation: const MapAnimation(
-            type: MapAnimationType.smooth,
-            duration: 0.8,
-          ),
-        );
-      } catch (e) {
-        debugPrint('⚠️ Camera move failed: $e');
-      }
+        ),
+        animation:
+            const MapAnimation(type: MapAnimationType.smooth, duration: 0.5),
+      );
     }
+  }
+
+  void _onClusterTap(StoreCluster cluster) {
+    if (_isDisposed || !mounted || _mapController == null) return;
+
+    if (cluster.count == 1) {
+      _onMarkerTap(cluster.stores.first);
+      return;
+    }
+
+    double minLat = cluster.stores.first.latitude;
+    double maxLat = cluster.stores.first.latitude;
+    double minLon = cluster.stores.first.longitude;
+    double maxLon = cluster.stores.first.longitude;
+
+    for (final store in cluster.stores) {
+      if (store.latitude < minLat) minLat = store.latitude;
+      if (store.latitude > maxLat) maxLat = store.latitude;
+      if (store.longitude < minLon) minLon = store.longitude;
+      if (store.longitude > maxLon) maxLon = store.longitude;
+    }
+
+    final centerLat = (minLat + maxLat) / 2;
+    final centerLon = (minLon + maxLon) / 2;
+
+    final currentZoom = _currentZoom.value;
+    final double newZoom;
+    if (currentZoom < 11.0) {
+      newZoom = 12.0;
+    } else if (currentZoom < 12.5) {
+      newZoom = 13.5;
+    } else if (currentZoom < 14.0) {
+      newZoom = 15.0;
+    } else {
+      newZoom = 16.0;
+    }
+
+    _mapController!.moveCamera(
+      CameraUpdate.newCameraPosition(
+        CameraPosition(
+          target: Point(latitude: centerLat, longitude: centerLon),
+          zoom: newZoom,
+        ),
+      ),
+      animation:
+          const MapAnimation(type: MapAnimationType.smooth, duration: 0.4),
+    );
   }
 
   void _clearSelectedStore() {
     if (!_isDisposed) {
       _selectedStore.value = null;
-      _markerAnimationController.stop();
-      _markerAnimationController.reset();
       _addShopMarkers();
     }
   }
@@ -565,14 +746,11 @@ class _MapFullScreenPageState extends State<MapFullScreenPage>
     }
 
     if (result.type == SearchResultType.store && result.store != null) {
-      // Set selected store and start continuous animation
       _selectedStore.value = result.store;
-      _markerAnimationController.repeat();
     } else {
       _addSearchMarker(result);
     }
 
-    // Close search overlay after result is tapped
     _clearSearch();
   }
 
@@ -607,7 +785,7 @@ class _MapFullScreenPageState extends State<MapFullScreenPage>
           image: BitmapDescriptor.fromAssetImage(
             'assets/icons/ic_user_location.png',
           ),
-          scale: 0.35,
+          scale: 0.28,
           anchor: const Offset(0.5, 1.0),
           rotationType: RotationType.noRotation,
         ),
@@ -632,18 +810,26 @@ class _MapFullScreenPageState extends State<MapFullScreenPage>
         onTap: _clearSearchAndSelection,
         child: Stack(
           children: [
-            // Full screen map
-            ValueListenableBuilder<List<PlacemarkMapObject>>(
-              valueListenable: _placemarks,
-              builder: (context, placemarks, _) {
-                return YandexMap(
-                  onMapCreated: _onMapCreated,
-                  mapType: MapType.map,
-                  mapObjects: placemarks,
-                );
-              },
+            RepaintBoundary(
+              child: ValueListenableBuilder<List<PlacemarkMapObject>>(
+                valueListenable: _placemarks,
+                builder: (context, placemarks, _) {
+                  return YandexMap(
+                    onMapCreated: _onMapCreated,
+                    mapType: MapType.map,
+                    mapObjects: placemarks,
+                    onCameraPositionChanged:
+                        (cameraPosition, reason, finished) {
+                      _onZoomChanged(cameraPosition.zoom);
+                      if (reason == CameraUpdateReason.gestures &&
+                          _selectedStore.value != null) {
+                        _clearSelectedStore();
+                      }
+                    },
+                  );
+                },
+              ),
             ),
-
             Positioned(
               top: 0,
               left: 0,
@@ -654,8 +840,6 @@ class _MapFullScreenPageState extends State<MapFullScreenPage>
                 subtitle: "discover stores near you",
               ),
             ),
-
-            // Top search bar - always visible
             SafeArea(
               child: Padding(
                 padding: EdgeInsets.symmetric(
@@ -672,7 +856,6 @@ class _MapFullScreenPageState extends State<MapFullScreenPage>
                       isSearchAvailable: _searchAvailable,
                     ),
                     SizedBox(height: 12.h),
-                    // Search results overlay
                     ValueListenableBuilder<String>(
                       valueListenable: _searchQuery,
                       builder: (context, query, _) {
@@ -690,8 +873,6 @@ class _MapFullScreenPageState extends State<MapFullScreenPage>
                 ),
               ),
             ),
-
-            // Floating store info card - appears when store is selected
             ValueListenableBuilder<StoreModel?>(
               valueListenable: _selectedStore,
               builder: (context, selectedStore, _) {
@@ -707,8 +888,6 @@ class _MapFullScreenPageState extends State<MapFullScreenPage>
                 );
               },
             ),
-
-            // Bottom navigation button
             Positioned(
               bottom: 32.h,
               right: 16.w,
@@ -1099,4 +1278,3 @@ class SearchResult {
     );
   }
 }
-

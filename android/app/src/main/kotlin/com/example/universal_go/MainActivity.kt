@@ -1,30 +1,33 @@
 package com.example.universal_go
 
 import android.os.Bundle
-import io.flutter.embedding.android.FlutterActivity
 import com.yandex.mapkit.MapKitFactory
+import io.flutter.embedding.android.FlutterActivity
 
-class MainActivity : FlutterActivity() {
-
+class MainActivity: FlutterActivity() {
+    
+    companion object {
+        private var isMapKitInitialized = false
+    }
+    
     override fun onCreate(savedInstanceState: Bundle?) {
-        // Set API key before calling initialize so MapKit can use it during initialization.
-        val apiKey = BuildConfig.YANDEX_API_KEY ?: ""
-        if (apiKey.isNotEmpty()) {
-            MapKitFactory.setApiKey(apiKey)
+        // Initialize MapKit before Flutter starts
+        if (!isMapKitInitialized) {
+            MapKitFactory.setApiKey(BuildConfig.YANDEX_API_KEY)
+            isMapKitInitialized = true
         }
-        // Initialize MapKitFactory. Docs recommend initializing early (Application.onCreate ideally).
-        MapKitFactory.initialize(this)
+        
         super.onCreate(savedInstanceState)
     }
-
+    
     override fun onStart() {
         super.onStart()
-        // Start MapKit lifecycle
+        // Ensure MapKit is initialized and started
         MapKitFactory.getInstance().onStart()
     }
-
+    
     override fun onStop() {
-        // Stop MapKit lifecycle
+        // Stop MapKit when activity stops
         MapKitFactory.getInstance().onStop()
         super.onStop()
     }

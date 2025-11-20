@@ -1,9 +1,10 @@
 import 'dart:async';
 import 'dart:ui' as ui;
-import 'dart:developer' as developer;
-import 'dart:typed_data';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
+import 'package:cached_network_image/cached_network_image.dart';
+import 'package:universal_go/core/services/map/cluster_stores_service.dart';
 import 'package:universal_go/core/utils/map_clustering_helper.dart';
 import 'package:universal_go/features/customer/data/models/map_store_cluster.dart';
 import 'package:universal_go/features/customer/presentation/pages/customer_map_full_page.dart';
@@ -17,9 +18,53 @@ import 'dart:math' as math;
 
 enum StoreTab { all, deals, featured, nearby }
 
-enum ViewMode { grid, list }
-
 enum SortOption { distance, rating, name }
+
+class StoreFilterState {
+  final StoreTab tab;
+  final String searchQuery;
+  final String? category;
+  final SortOption sortOption;
+
+  const StoreFilterState({
+    required this.tab,
+    required this.searchQuery,
+    required this.category,
+    required this.sortOption,
+  });
+
+  StoreFilterState copyWith({
+    StoreTab? tab,
+    String? searchQuery,
+    String? category,
+    SortOption? sortOption,
+    bool clearCategory = false,
+  }) {
+    return StoreFilterState(
+      tab: tab ?? this.tab,
+      searchQuery: searchQuery ?? this.searchQuery,
+      category: clearCategory ? null : (category ?? this.category),
+      sortOption: sortOption ?? this.sortOption,
+    );
+  }
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is StoreFilterState &&
+          runtimeType == other.runtimeType &&
+          tab == other.tab &&
+          searchQuery == other.searchQuery &&
+          category == other.category &&
+          sortOption == other.sortOption;
+
+  @override
+  int get hashCode =>
+      tab.hashCode ^
+      searchQuery.hashCode ^
+      category.hashCode ^
+      sortOption.hashCode;
+}
 
 class CustomerHomePage extends StatefulWidget {
   const CustomerHomePage({super.key});
@@ -28,10 +73,15 @@ class CustomerHomePage extends StatefulWidget {
   State<CustomerHomePage> createState() => _CustomerHomePageState();
 }
 
-class _CustomerHomePageState extends State<CustomerHomePage>
-    with SingleTickerProviderStateMixin {
+class _CustomerHomePageState extends State<CustomerHomePage> {
   YandexMapController? _mapController;
   bool _isDisposed = false;
+
+  // Services
+  final _clusteringService = MapClusteringService();
+  StreamSubscription? _clusteringSubscription;
+
+  // Core state
   final ValueNotifier<Position?> _userPositionNotifier =
       ValueNotifier<Position?>(null);
   final ValueNotifier<List<PlacemarkMapObject>> _placemarks =
@@ -39,31 +89,40 @@ class _CustomerHomePageState extends State<CustomerHomePage>
   final ValueNotifier<bool> _isLoadingLocation = ValueNotifier<bool>(false);
   final ValueNotifier<double> _currentZoom = ValueNotifier<double>(11.5);
 
+  // Sheet state
   final DraggableScrollableController _sheetController =
       DraggableScrollableController();
   final ValueNotifier<double> _sheetPosition = ValueNotifier<double>(0.35);
 
-  final ValueNotifier<StoreTab> _selectedTab = ValueNotifier(StoreTab.all);
-  final ValueNotifier<String> _searchQuery = ValueNotifier('');
-  final ValueNotifier<String?> _selectedCategory = ValueNotifier(null);
-  final ValueNotifier<ViewMode> _viewMode = ValueNotifier(ViewMode.list);
-  final ValueNotifier<SortOption> _sortOption =
-      ValueNotifier(SortOption.distance);
+  // Filter state
+  final ValueNotifier<StoreFilterState> _filterState =
+      ValueNotifier<StoreFilterState>(
+    const StoreFilterState(
+      tab: StoreTab.all,
+      searchQuery: '',
+      category: null,
+      sortOption: SortOption.distance,
+    ),
+  );
+
   final ValueNotifier<StoreModel?> _selectedStore = ValueNotifier(null);
 
-  // Smooth pulsing animation for active marker
-  late AnimationController _markerAnimationController;
-  late Animation<double> _markerScaleAnimation;
-  bool _isAnimatingMarker = false;
+  // Cached filtered stores
+  List<StoreModel> _cachedFilteredStores = [];
+  StoreFilterState? _lastFilterState;
 
   // Cluster marker cache
   final Map<int, Uint8List> _clusterMarkerCache = {};
-  bool _isGeneratingMarkers = false;
+  final Set<int> _generatingMarkers = {};
 
-  // Zoom debouncing for smooth transitions
+  // Current clusters
+  List<StoreCluster> _currentClusters = [];
+
+  // Zoom debouncing
   Timer? _zoomDebounceTimer;
   double _lastProcessedZoom = 11.5;
 
+  // Store data (your existing 25 stores)
   final List<StoreModel> _stores = [
     StoreModel(
       id: '1',
@@ -77,6 +136,8 @@ class _CustomerHomePageState extends State<CustomerHomePage>
       totalRatings: 120,
       productCount: 25,
       description: 'Your trusted electronics shop',
+      coverImageUrl:
+          'https://images.unsplash.com/photo-1498049794561-7780e7231661?w=400&q=80',
       isActive: true,
       createdAt: DateTime.now().subtract(const Duration(days: 365)),
       updatedAt: DateTime.now(),
@@ -93,6 +154,8 @@ class _CustomerHomePageState extends State<CustomerHomePage>
       totalRatings: 85,
       productCount: 18,
       description: 'Quality electronics at affordable prices',
+      coverImageUrl:
+          'https://images.unsplash.com/photo-1526738549149-8e07eca6c147?w=400&q=80',
       isActive: true,
       createdAt: DateTime.now().subtract(const Duration(days: 200)),
       updatedAt: DateTime.now(),
@@ -109,6 +172,8 @@ class _CustomerHomePageState extends State<CustomerHomePage>
       totalRatings: 210,
       productCount: 32,
       description: 'Everything for your home',
+      coverImageUrl:
+          'https://images.unsplash.com/photo-1555041469-a586c61ea9bc?w=400&q=80',
       isActive: true,
       createdAt: DateTime.now().subtract(const Duration(days: 500)),
       updatedAt: DateTime.now(),
@@ -125,6 +190,8 @@ class _CustomerHomePageState extends State<CustomerHomePage>
       totalRatings: 95,
       productCount: 15,
       description: 'Latest fashion trends',
+      coverImageUrl:
+          'https://images.unsplash.com/photo-1441986300917-64674bd600d8?w=400&q=80',
       isActive: true,
       createdAt: DateTime.now().subtract(const Duration(days: 150)),
       updatedAt: DateTime.now(),
@@ -141,6 +208,8 @@ class _CustomerHomePageState extends State<CustomerHomePage>
       totalRatings: 305,
       productCount: 45,
       description: 'A world of knowledge',
+      coverImageUrl:
+          'https://images.unsplash.com/photo-1544947950-fa07a98d237f?w=400&q=80',
       isActive: true,
       createdAt: DateTime.now().subtract(const Duration(days: 730)),
       updatedAt: DateTime.now(),
@@ -157,6 +226,8 @@ class _CustomerHomePageState extends State<CustomerHomePage>
       totalRatings: 178,
       productCount: 52,
       description: 'Fresh groceries daily',
+      coverImageUrl:
+          'https://images.unsplash.com/photo-1556909114-f6e7ad9d0e9d?w=400&q=80',
       isActive: true,
       createdAt: DateTime.now().subtract(const Duration(days: 420)),
       updatedAt: DateTime.now(),
@@ -173,6 +244,8 @@ class _CustomerHomePageState extends State<CustomerHomePage>
       totalRatings: 67,
       productCount: 12,
       description: '24/7 convenience store',
+      coverImageUrl:
+          'https://images.unsplash.com/photo-1556742049-0cfed4f6a45d?w=400&q=80',
       isActive: true,
       createdAt: DateTime.now().subtract(const Duration(days: 90)),
       updatedAt: DateTime.now(),
@@ -189,6 +262,8 @@ class _CustomerHomePageState extends State<CustomerHomePage>
       totalRatings: 143,
       productCount: 28,
       description: 'All sports equipment',
+      coverImageUrl:
+          'https://images.unsplash.com/photo-1571019613454-1cb2f99b2d8b?w=400&q=80',
       isActive: true,
       createdAt: DateTime.now().subtract(const Duration(days: 310)),
       updatedAt: DateTime.now(),
@@ -205,6 +280,8 @@ class _CustomerHomePageState extends State<CustomerHomePage>
       totalRatings: 267,
       productCount: 38,
       description: 'Everything for your pets',
+      coverImageUrl:
+          'https://images.unsplash.com/photo-1601758228041-f3b2795255f1?w=400&q=80',
       isActive: true,
       createdAt: DateTime.now().subtract(const Duration(days: 650)),
       updatedAt: DateTime.now(),
@@ -221,8 +298,280 @@ class _CustomerHomePageState extends State<CustomerHomePage>
       totalRatings: 192,
       productCount: 41,
       description: 'Beauty products & cosmetics',
+      coverImageUrl:
+          'https://images.unsplash.com/photo-1596462502278-27bfdc403348?w=400&q=80',
       isActive: true,
       createdAt: DateTime.now().subtract(const Duration(days: 275)),
+      updatedAt: DateTime.now(),
+    ),
+    StoreModel(
+      id: '11',
+      ownerId: 'owner_11',
+      name: 'Gadget Hub',
+      category: 'Electronics',
+      address: 'Yakkasaray, Tashkent',
+      latitude: 41.3056,
+      longitude: 69.2408,
+      rating: 4.6,
+      totalRatings: 156,
+      productCount: 28,
+      description: 'Latest gadgets and tech accessories',
+      coverImageUrl:
+          'https://images.unsplash.com/photo-1498049794561-7780e7231661?w=400&q=80',
+      isActive: true,
+      createdAt: DateTime.now().subtract(const Duration(days: 180)),
+      updatedAt: DateTime.now(),
+    ),
+    StoreModel(
+      id: '12',
+      ownerId: 'owner_12',
+      name: 'Furniture World',
+      category: 'Home & Garden',
+      address: 'Olmazor, Tashkent',
+      latitude: 41.3305,
+      longitude: 69.2201,
+      rating: 4.4,
+      totalRatings: 98,
+      productCount: 35,
+      description: 'Modern furniture for your home',
+      coverImageUrl:
+          'https://images.unsplash.com/photo-1555041469-a586c61ea9bc?w=400&q=80',
+      isActive: true,
+      createdAt: DateTime.now().subtract(const Duration(days: 320)),
+      updatedAt: DateTime.now(),
+    ),
+    StoreModel(
+      id: '13',
+      ownerId: 'owner_13',
+      name: 'Style Boutique',
+      category: 'Fashion',
+      address: 'Chilonzor, Tashkent',
+      latitude: 41.2923,
+      longitude: 69.2356,
+      rating: 4.7,
+      totalRatings: 223,
+      productCount: 48,
+      description: 'Trendy fashion and accessories',
+      coverImageUrl:
+          'https://images.unsplash.com/photo-1441986300917-64674bd600d8?w=400&q=80',
+      isActive: true,
+      createdAt: DateTime.now().subtract(const Duration(days: 450)),
+      updatedAt: DateTime.now(),
+    ),
+    StoreModel(
+      id: '14',
+      ownerId: 'owner_14',
+      name: 'Kitchen Essentials',
+      category: 'Home & Garden',
+      address: 'Mirabad, Tashkent',
+      latitude: 41.3089,
+      longitude: 69.2756,
+      rating: 4.3,
+      totalRatings: 134,
+      productCount: 42,
+      description: 'Everything for your kitchen',
+      coverImageUrl:
+          'https://images.unsplash.com/photo-1556911220-bff31c812dba?w=400&q=80',
+      isActive: true,
+      createdAt: DateTime.now().subtract(const Duration(days: 280)),
+      updatedAt: DateTime.now(),
+    ),
+    StoreModel(
+      id: '15',
+      ownerId: 'owner_15',
+      name: 'Toy Kingdom',
+      category: 'Toys & Games',
+      address: 'Yunusabad, Tashkent',
+      latitude: 41.3689,
+      longitude: 69.2156,
+      rating: 4.8,
+      totalRatings: 312,
+      productCount: 65,
+      description: 'Toys and games for all ages',
+      coverImageUrl:
+          'https://images.unsplash.com/photo-1558618666-fcd25c85cd64?w=400&q=80',
+      isActive: true,
+      createdAt: DateTime.now().subtract(const Duration(days: 600)),
+      updatedAt: DateTime.now(),
+    ),
+    StoreModel(
+      id: '16',
+      ownerId: 'owner_16',
+      name: 'Health & Wellness',
+      category: 'Health',
+      address: 'Shayxontohur, Tashkent',
+      latitude: 41.2701,
+      longitude: 69.2256,
+      rating: 4.6,
+      totalRatings: 187,
+      productCount: 38,
+      description: 'Health supplements and wellness products',
+      coverImageUrl:
+          'https://images.unsplash.com/photo-1576091160399-112ba8d25d1f?w=400&q=80',
+      isActive: true,
+      createdAt: DateTime.now().subtract(const Duration(days: 340)),
+      updatedAt: DateTime.now(),
+    ),
+    StoreModel(
+      id: '17',
+      ownerId: 'owner_17',
+      name: 'Auto Parts Pro',
+      category: 'Automotive',
+      address: 'Sergeli, Tashkent',
+      latitude: 41.2289,
+      longitude: 69.2245,
+      rating: 4.5,
+      totalRatings: 145,
+      productCount: 55,
+      description: 'Quality auto parts and accessories',
+      coverImageUrl:
+          'https://images.unsplash.com/photo-1486262715619-67b85e0b08d3?w=400&q=80',
+      isActive: true,
+      createdAt: DateTime.now().subtract(const Duration(days: 390)),
+      updatedAt: DateTime.now(),
+    ),
+    StoreModel(
+      id: '18',
+      ownerId: 'owner_18',
+      name: 'Jewelry Palace',
+      category: 'Jewelry',
+      address: 'Yashnabad, Tashkent',
+      latitude: 41.2798,
+      longitude: 69.2398,
+      rating: 4.9,
+      totalRatings: 278,
+      productCount: 32,
+      description: 'Exquisite jewelry and watches',
+      coverImageUrl:
+          'https://images.unsplash.com/photo-1515562141207-7a88fb7ce338?w=400&q=80',
+      isActive: true,
+      createdAt: DateTime.now().subtract(const Duration(days: 520)),
+      updatedAt: DateTime.now(),
+    ),
+    StoreModel(
+      id: '19',
+      ownerId: 'owner_19',
+      name: 'Music Store',
+      category: 'Music',
+      address: 'Mirobod, Tashkent',
+      latitude: 41.3245,
+      longitude: 69.2845,
+      rating: 4.4,
+      totalRatings: 112,
+      productCount: 26,
+      description: 'Musical instruments and equipment',
+      coverImageUrl:
+          'https://images.unsplash.com/photo-1493225457124-a3eb161ffa5f?w=400&q=80',
+      isActive: true,
+      createdAt: DateTime.now().subtract(const Duration(days: 240)),
+      updatedAt: DateTime.now(),
+    ),
+    StoreModel(
+      id: '20',
+      ownerId: 'owner_20',
+      name: 'Art Supplies Co',
+      category: 'Arts & Crafts',
+      address: 'Hamza, Tashkent',
+      latitude: 41.3498,
+      longitude: 69.2567,
+      rating: 4.7,
+      totalRatings: 201,
+      productCount: 58,
+      description: 'Art supplies and craft materials',
+      coverImageUrl:
+          'https://images.unsplash.com/photo-1513475382585-d06e58bcb0e0?w=400&q=80',
+      isActive: true,
+      createdAt: DateTime.now().subtract(const Duration(days: 380)),
+      updatedAt: DateTime.now(),
+    ),
+    StoreModel(
+      id: '21',
+      ownerId: 'owner_21',
+      name: 'Coffee & Tea House',
+      category: 'Food & Beverage',
+      address: 'Uchtepa, Tashkent',
+      latitude: 41.2834,
+      longitude: 69.1998,
+      rating: 4.8,
+      totalRatings: 334,
+      productCount: 72,
+      description: 'Premium coffee and tea selection',
+      coverImageUrl:
+          'https://images.unsplash.com/photo-1447933601403-0c6688de566e?w=400&q=80',
+      isActive: true,
+      createdAt: DateTime.now().subtract(const Duration(days: 560)),
+      updatedAt: DateTime.now(),
+    ),
+    StoreModel(
+      id: '22',
+      ownerId: 'owner_22',
+      name: 'Fitness Gear',
+      category: 'Sports',
+      address: 'Yakkasaray, Tashkent',
+      latitude: 41.3012,
+      longitude: 69.2456,
+      rating: 4.5,
+      totalRatings: 167,
+      productCount: 44,
+      description: 'Fitness equipment and gear',
+      coverImageUrl:
+          'https://images.unsplash.com/photo-1571019613454-1cb2f99b2d8b?w=400&q=80',
+      isActive: true,
+      createdAt: DateTime.now().subtract(const Duration(days: 290)),
+      updatedAt: DateTime.now(),
+    ),
+    StoreModel(
+      id: '23',
+      ownerId: 'owner_23',
+      name: 'Garden Center',
+      category: 'Home & Garden',
+      address: 'Olmazor, Tashkent',
+      latitude: 41.3356,
+      longitude: 69.2145,
+      rating: 4.6,
+      totalRatings: 189,
+      productCount: 51,
+      description: 'Plants, seeds, and garden tools',
+      coverImageUrl:
+          'https://images.unsplash.com/photo-1416879595882-3373a0480b5b?w=400&q=80',
+      isActive: true,
+      createdAt: DateTime.now().subtract(const Duration(days: 410)),
+      updatedAt: DateTime.now(),
+    ),
+    StoreModel(
+      id: '24',
+      ownerId: 'owner_24',
+      name: 'Baby Store',
+      category: 'Baby & Kids',
+      address: 'Chilonzor, Tashkent',
+      latitude: 41.2956,
+      longitude: 69.2389,
+      rating: 4.7,
+      totalRatings: 245,
+      productCount: 68,
+      description: 'Everything for babies and kids',
+      coverImageUrl:
+          'https://images.unsplash.com/photo-1503454537195-1dcabb73ffb9?w=400&q=80',
+      isActive: true,
+      createdAt: DateTime.now().subtract(const Duration(days: 470)),
+      updatedAt: DateTime.now(),
+    ),
+    StoreModel(
+      id: '25',
+      ownerId: 'owner_25',
+      name: 'Office Supplies Plus',
+      category: 'Office Supplies',
+      address: 'Mirabad, Tashkent',
+      latitude: 41.3123,
+      longitude: 69.2723,
+      rating: 4.3,
+      totalRatings: 128,
+      productCount: 37,
+      description: 'Office supplies and stationery',
+      coverImageUrl:
+          'https://images.unsplash.com/photo-1484480974693-6ca0a78fb36b?w=400&q=80',
+      isActive: true,
+      createdAt: DateTime.now().subtract(const Duration(days: 220)),
       updatedAt: DateTime.now(),
     ),
   ];
@@ -231,6 +580,9 @@ class _CustomerHomePageState extends State<CustomerHomePage>
     '1': '50% OFF',
     '3': 'Flash Sale',
     '5': 'Buy 2 Get 1',
+    '11': 'New Arrival',
+    '15': 'Special Deal',
+    '18': 'Limited Time',
   };
 
   List<String> get _categories {
@@ -242,93 +594,107 @@ class _CustomerHomePageState extends State<CustomerHomePage>
   @override
   void initState() {
     super.initState();
-    _getCurrentLocation();
     _sheetController.addListener(_onSheetChanged);
-    _initializeMarkerAnimation();
-    _generateClusterMarkers();
 
-    // Set initial zoom level for proper clustering display
     _currentZoom.value = MapClusteringHelper.tashkentInitialZoom;
     _lastProcessedZoom = MapClusteringHelper.tashkentInitialZoom;
 
-    // Get location after a small delay to ensure map is ready
-    Future.delayed(const Duration(milliseconds: 500), () {
+    _initializeClustering();
+    _generateEssentialClusterMarkers();
+    _updateFilteredStores(_filterState.value);
+
+    Future.delayed(const Duration(milliseconds: 300), () {
       if (mounted && !_isDisposed) {
         _getCurrentLocation();
       }
     });
   }
 
-  void _initializeMarkerAnimation() {
-    _markerAnimationController = AnimationController(
-      duration: const Duration(milliseconds: 800),
-      vsync: this,
-    );
+  Future<void> _initializeClustering() async {
+    await _clusteringService.initialize();
 
-    _markerScaleAnimation = TweenSequence<double>([
-      TweenSequenceItem(
-        tween: Tween<double>(begin: 1.0, end: 1.15)
-            .chain(CurveTween(curve: Curves.easeOut)),
-        weight: 50,
-      ),
-      TweenSequenceItem(
-        tween: Tween<double>(begin: 1.15, end: 1.0)
-            .chain(CurveTween(curve: Curves.easeIn)),
-        weight: 50,
-      ),
-    ]).animate(_markerAnimationController);
-
-    _markerAnimationController.addListener(_updateActiveMarker);
+    // Initial clustering
+    _performClustering(_currentZoom.value);
   }
 
-  Future<void> _generateClusterMarkers() async {
-    if (_isGeneratingMarkers) return;
-    _isGeneratingMarkers = true;
+  Future<void> _performClustering(double zoom) async {
+    final clusters = await _clusteringService.clusterStores(
+      stores: _stores,
+      zoom: zoom,
+    );
 
-    // Pre-generate markers for counts 2-100 (common cluster sizes)
-    for (int count = 2; count <= 100; count++) {
+    if (!_isDisposed && mounted) {
+      _currentClusters = clusters;
+      _addShopMarkers();
+    }
+  }
+
+  Future<void> _generateEssentialClusterMarkers() async {
+    // FIXED: More comprehensive essential sizes
+    const essentialSizes = [2, 3, 4, 5, 8, 10, 15, 20, 25, 30, 40, 50, 100];
+
+    for (final count in essentialSizes) {
       if (_clusterMarkerCache.containsKey(count)) continue;
-
-      final bytes = await _createClusterMarkerBytesAsync(count);
+      final bytes = await _createClusterMarkerBytes(count);
       if (!_isDisposed && mounted) {
         _clusterMarkerCache[count] = bytes;
       }
     }
-
-    _isGeneratingMarkers = false;
   }
 
-  Future<Uint8List> _createClusterMarkerBytesAsync(int count) async {
+  Future<Uint8List> _getOrCreateClusterMarker(int count) async {
+    if (_clusterMarkerCache.containsKey(count)) {
+      return _clusterMarkerCache[count]!;
+    }
+
+    if (_generatingMarkers.contains(count)) {
+      await Future.delayed(const Duration(milliseconds: 50));
+      return _getOrCreateClusterMarker(count);
+    }
+
+    _generatingMarkers.add(count);
+    final bytes = await _createClusterMarkerBytes(count);
+    _generatingMarkers.remove(count);
+
+    if (!_isDisposed && mounted) {
+      _clusterMarkerCache[count] = bytes;
+    }
+
+    return bytes;
+  }
+
+  Future<Uint8List> _createClusterMarkerBytes(int count) async {
     final recorder = ui.PictureRecorder();
     final canvas = Canvas(recorder);
 
-    // MUCH LARGER - 85-95px to be clearly visible and match pin marker height
-    final double size = count > 50 ? 95.0 : (count > 10 ? 90.0 : 85.0);
+    // FIXED: Bigger cluster markers to match store markers (60-75px)
+    final double size =
+        count > 100 ? 75.0 : (count > 50 ? 70.0 : (count > 10 ? 65.0 : 60.0));
     final center = Offset(size / 2, size / 2);
     final radius = size / 2;
 
-    // Draw larger shadow for depth
+    // Shadow
     final shadowPaint = Paint()
-      ..color = Colors.black.withOpacity(0.4)
-      ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 5);
-    canvas.drawCircle(center.translate(0, 3), radius, shadowPaint);
+      ..color = Colors.black.withValues(alpha: 0.25)
+      ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 4);
+    canvas.drawCircle(center.translate(0, 2), radius, shadowPaint);
 
-    // Draw main circle
+    // Main circle
     final paint = Paint()
       ..color = const Color(0xFF6B4EFF)
       ..style = PaintingStyle.fill;
     canvas.drawCircle(center, radius, paint);
 
-    // Draw thick white border
+    // White border (thicker for visibility)
     final borderPaint = Paint()
       ..color = Colors.white
       ..style = PaintingStyle.stroke
-      ..strokeWidth = 5.0;
+      ..strokeWidth = 4.0;
     canvas.drawCircle(center, radius, borderPaint);
 
-    // Draw text - much larger fonts
-    final fontSize = count > 99 ? 22.0 : (count > 9 ? 24.0 : 26.0);
-
+    // Text
+    final fontSize =
+        count > 999 ? 18.0 : (count > 99 ? 20.0 : (count > 9 ? 23.0 : 26.0));
     final textPainter = TextPainter(
       text: TextSpan(
         text: count > 999 ? '999+' : count.toString(),
@@ -356,54 +722,29 @@ class _CustomerHomePageState extends State<CustomerHomePage>
     return byteData!.buffer.asUint8List();
   }
 
-  Uint8List? _getClusterMarkerBytes(int count) {
-    return _clusterMarkerCache[count];
-  }
-
-  void _updateActiveMarker() {
-    if (!_isDisposed && _isAnimatingMarker && _selectedStore.value != null) {
-      _addShopMarkers();
-    }
-  }
-
-  void _startMarkerAnimation() {
-    if (_isDisposed || _isAnimatingMarker) return;
-    _isAnimatingMarker = true;
-    _markerAnimationController.repeat();
-  }
-
-  void _stopMarkerAnimation() {
-    if (_isDisposed || !_isAnimatingMarker) return;
-    _isAnimatingMarker = false;
-    _markerAnimationController.stop();
-    _markerAnimationController.reset();
-  }
-
   @override
   void dispose() {
     _isDisposed = true;
     _zoomDebounceTimer?.cancel();
-    _stopMarkerAnimation();
+    _clusteringSubscription?.cancel();
+    _clusteringService.dispose();
     _clusterMarkerCache.clear();
+    _generatingMarkers.clear();
     _userPositionNotifier.dispose();
-    _markerAnimationController.dispose();
     _placemarks.dispose();
     _isLoadingLocation.dispose();
-    _selectedTab.dispose();
-    _searchQuery.dispose();
-    _selectedCategory.dispose();
-    _viewMode.dispose();
-    _sortOption.dispose();
+    _filterState.dispose();
     _selectedStore.dispose();
     _sheetController.dispose();
     _sheetPosition.dispose();
     _currentZoom.dispose();
     _mapController?.dispose();
+    MapClusteringHelper.clearCache();
     super.dispose();
   }
 
   void _onSheetChanged() {
-    if (_sheetController.isAttached) {
+    if (_sheetController.isAttached && !_isDisposed) {
       _sheetPosition.value = _sheetController.size;
     }
   }
@@ -428,7 +769,7 @@ class _CustomerHomePageState extends State<CustomerHomePage>
         return;
       }
 
-      Position position = await Geolocator.getCurrentPosition(
+      final position = await Geolocator.getCurrentPosition(
         locationSettings: const LocationSettings(
           accuracy: LocationAccuracy.high,
           distanceFilter: 100,
@@ -441,7 +782,6 @@ class _CustomerHomePageState extends State<CustomerHomePage>
       _calculateDistances(position);
 
       if (_mapController != null && !_isDisposed && mounted) {
-        // Check if user is in Tashkent area (within ~25km)
         final distanceFromTashkent = _calculateDistance(
           position.latitude,
           position.longitude,
@@ -453,14 +793,10 @@ class _CustomerHomePageState extends State<CustomerHomePage>
         final double zoom;
 
         if (distanceFromTashkent < 25) {
-          // User is in Tashkent - center on their location with closer zoom
-          target = Point(
-            latitude: position.latitude,
-            longitude: position.longitude,
-          );
+          target =
+              Point(latitude: position.latitude, longitude: position.longitude);
           zoom = 12.0;
         } else {
-          // User is outside Tashkent - show whole Tashkent
           target = const Point(
             latitude: MapClusteringHelper.tashkentCenterLat,
             longitude: MapClusteringHelper.tashkentCenterLon,
@@ -470,21 +806,16 @@ class _CustomerHomePageState extends State<CustomerHomePage>
 
         await _mapController!.moveCamera(
           CameraUpdate.newCameraPosition(
-            CameraPosition(target: target, zoom: zoom),
-          ),
-          animation: const MapAnimation(
-            type: MapAnimationType.smooth,
-            duration: 0.8,
-          ),
+              CameraPosition(target: target, zoom: zoom)),
+          animation:
+              const MapAnimation(type: MapAnimationType.smooth, duration: 0.6),
         );
-
-        _addShopMarkers();
 
         if (_sheetController.isAttached && !showLoading) {
           _sheetController.animateTo(
             0.35,
-            duration: const Duration(milliseconds: 300),
-            curve: Curves.easeInOut,
+            duration: const Duration(milliseconds: 250),
+            curve: Curves.easeOut,
           );
         }
       }
@@ -512,10 +843,8 @@ class _CustomerHomePageState extends State<CustomerHomePage>
             zoom: MapClusteringHelper.tashkentInitialZoom,
           ),
         ),
-        animation: const MapAnimation(
-          type: MapAnimationType.smooth,
-          duration: 0.6,
-        ),
+        animation:
+            const MapAnimation(type: MapAnimationType.smooth, duration: 0.5),
       );
     }
   }
@@ -525,7 +854,6 @@ class _CustomerHomePageState extends State<CustomerHomePage>
     _mapController = controller;
     _mapController!.toggleUserLayer(visible: true);
 
-    // Set initial camera position to Tashkent
     _mapController!.moveCamera(
       CameraUpdate.newCameraPosition(
         const CameraPosition(
@@ -537,208 +865,139 @@ class _CustomerHomePageState extends State<CustomerHomePage>
         ),
       ),
     );
-
-    _addShopMarkers();
   }
 
   void _onZoomChanged(double newZoom) {
     _currentZoom.value = newZoom;
 
-    // Debounce zoom changes for smooth clustering
     _zoomDebounceTimer?.cancel();
-    _zoomDebounceTimer = Timer(const Duration(milliseconds: 120), () {
-      if (!_isDisposed && mounted) {
-        // Recalculate if crossed significant zoom boundary
-        if (_shouldRecalculateClusters(_lastProcessedZoom, newZoom)) {
-          _lastProcessedZoom = newZoom;
-          _addShopMarkers();
-        }
+    _zoomDebounceTimer = Timer(const Duration(milliseconds: 250), () {
+      // FIXED: Faster from 350ms
+      if (!_isDisposed &&
+          mounted &&
+          _shouldRecalculateClusters(_lastProcessedZoom, newZoom)) {
+        _lastProcessedZoom = newZoom;
+        _performClustering(newZoom);
       }
     });
   }
 
   bool _shouldRecalculateClusters(double oldZoom, double newZoom) {
-    // UPDATED: Main boundary at 13.0 (was 12.5)
-    const mainBoundary = MapClusteringHelper.individualStoreThreshold;
+    const mainBoundary =
+        MapClusteringHelper.individualStoreThreshold; // Now 12.5
 
     final wasAbove = oldZoom >= mainBoundary;
     final isAbove = newZoom >= mainBoundary;
 
-    if (wasAbove != isAbove) {
-      return true; // Crossed the main boundary
-    }
+    if (wasAbove != isAbove) return true;
 
-    // UPDATED: Sub-boundaries aligned with new thresholds
-    const subBoundaries = [9.5, 11.5, 13.0];
-
-    for (final boundary in subBoundaries) {
+    const boundaries = [
+      10.5,
+      11.5,
+      12.0,
+      12.5
+    ]; // FIXED: More granular boundaries
+    for (final boundary in boundaries) {
       final wasBelow = oldZoom < boundary;
       final isBelow = newZoom < boundary;
-      if (wasBelow != isBelow) {
-        return true;
-      }
+      if (wasBelow != isBelow) return true;
     }
 
-    // Recalculate if zoom changed significantly
-    return (newZoom - oldZoom).abs() > 0.6; // CHANGED: From 0.5 to 0.6
+    return (newZoom - oldZoom).abs() > 0.8; // FIXED: More sensitive
   }
 
   void _addShopMarkers() {
     if (_isDisposed) return;
 
     final placemarks = <PlacemarkMapObject>[];
-    final currentZoom = _currentZoom.value;
 
-    // Add user location marker
     final userPosition = _userPositionNotifier.value;
     if (userPosition != null) {
-      final userPlacemark = PlacemarkMapObject(
-        mapId: const MapObjectId('user_location'),
-        point: Point(
-          latitude: userPosition.latitude,
-          longitude: userPosition.longitude,
-        ),
-        opacity: 1.0,
-        icon: PlacemarkIcon.single(
-          PlacemarkIconStyle(
-            image: BitmapDescriptor.fromAssetImage(
-              'assets/icons/ic_user_location.png',
+      placemarks.add(
+        PlacemarkMapObject(
+          mapId: const MapObjectId('user_location'),
+          point: Point(
+              latitude: userPosition.latitude,
+              longitude: userPosition.longitude),
+          opacity: 1.0,
+          icon: PlacemarkIcon.single(
+            PlacemarkIconStyle(
+              image: BitmapDescriptor.fromAssetImage(
+                  'assets/icons/ic_user_location.png'),
+              scale: 0.22,
+              anchor: const Offset(0.5, 0.5),
+              rotationType: RotationType.noRotation,
             ),
-            scale: 0.22,
-            anchor: const Offset(0.5, 0.5),
-            rotationType: RotationType.noRotation,
           ),
         ),
       );
-      placemarks.add(userPlacemark);
     }
 
-    // Get clusters based on current zoom
-    final clusters = MapClusteringHelper.clusterStores(_stores, currentZoom);
     final selectedStore = _selectedStore.value;
-
-    // VALIDATION: Check total stores in clusters
-    final totalStoresInClusters = clusters.fold<int>(
-      0,
-      (sum, cluster) => sum + cluster.count,
-    );
-
-    developer.log(
-      'Zoom: ${currentZoom.toStringAsFixed(2)} | '
-      'Total stores: ${_stores.length} | '
-      'Stores in clusters: $totalStoresInClusters | '
-      'Cluster count: ${clusters.length}',
-      name: 'MapClustering',
-    );
-
-    // Check if we should show individual stores
     final showIndividual =
-        MapClusteringHelper.shouldShowIndividualStores(currentZoom);
+        MapClusteringHelper.shouldShowIndividualStores(_currentZoom.value);
 
-    for (final cluster in clusters) {
+    for (final cluster in _currentClusters) {
       if (showIndividual && cluster.count == 1) {
-        // Above threshold: render as individual marker
         final store = cluster.stores.first;
         final isSelected = selectedStore?.id == store.id;
         final hasDeal = _storeDeals.containsKey(store.id);
 
-        if (isSelected && _isAnimatingMarker) {
-          final animationScale = _markerScaleAnimation.value;
-          final placemark = PlacemarkMapObject(
-            mapId: MapObjectId('store_active_${store.id}'),
-            point: Point(latitude: store.latitude, longitude: store.longitude),
-            opacity: 1.0,
-            consumeTapEvents: true,
-            icon: PlacemarkIcon.single(
-              PlacemarkIconStyle(
-                image: BitmapDescriptor.fromAssetImage(
-                  'assets/icons/ic_active_marker.png',
-                ),
-                scale: 0.30 * animationScale,
-                anchor: const Offset(0.5, 1.0),
-                rotationType: RotationType.noRotation,
-              ),
-            ),
-            onTap: (PlacemarkMapObject self, Point point) {
-              _onMarkerTap(store);
-            },
-          );
-          placemarks.add(placemark);
-        } else if (isSelected && !_isAnimatingMarker) {
-          final placemark = PlacemarkMapObject(
-            mapId: MapObjectId('store_active_${store.id}'),
-            point: Point(latitude: store.latitude, longitude: store.longitude),
-            opacity: 1.0,
-            consumeTapEvents: true,
-            icon: PlacemarkIcon.single(
-              PlacemarkIconStyle(
-                image: BitmapDescriptor.fromAssetImage(
-                  'assets/icons/ic_active_marker.png',
-                ),
-                scale: 0.30,
-                anchor: const Offset(0.5, 1.0),
-                rotationType: RotationType.noRotation,
-              ),
-            ),
-            onTap: (PlacemarkMapObject self, Point point) {
-              _onMarkerTap(store);
-            },
-          );
-          placemarks.add(placemark);
-        } else {
-          final placemark = PlacemarkMapObject(
+        final iconAsset = isSelected
+            ? 'assets/icons/ic_active_marker.png'
+            : (hasDeal
+                ? 'assets/icons/ic_store_deal_marker.png'
+                : 'assets/icons/ic_store_marker.png');
+
+        placemarks.add(
+          PlacemarkMapObject(
             mapId: MapObjectId('store_${store.id}'),
             point: Point(latitude: store.latitude, longitude: store.longitude),
             opacity: 1.0,
             consumeTapEvents: true,
             icon: PlacemarkIcon.single(
               PlacemarkIconStyle(
-                image: BitmapDescriptor.fromAssetImage(
-                  hasDeal
-                      ? 'assets/icons/ic_store_deal_marker.png'
-                      : 'assets/icons/ic_store_marker.png',
-                ),
+                image: BitmapDescriptor.fromAssetImage(iconAsset),
                 scale: hasDeal ? 0.26 : 0.22,
                 anchor: const Offset(0.5, 1.0),
                 rotationType: RotationType.noRotation,
               ),
             ),
-            onTap: (PlacemarkMapObject self, Point point) {
-              _onMarkerTap(store);
-            },
-          );
-          placemarks.add(placemark);
-        }
-      } else {
-        // Below threshold OR multi-store cluster: render as cluster marker
-        final markerBytes = _getClusterMarkerBytes(cluster.count);
-        if (markerBytes == null) continue;
-
-        final placemark = PlacemarkMapObject(
-          mapId: MapObjectId('cluster_${cluster.id}'),
-          point: Point(
-            latitude: cluster.latitude,
-            longitude: cluster.longitude,
+            onTap: (_, __) => _onMarkerTap(store),
           ),
-          opacity: 1.0,
-          consumeTapEvents: true,
-          icon: PlacemarkIcon.single(
-            PlacemarkIconStyle(
-              image: BitmapDescriptor.fromBytes(markerBytes),
-              scale: 1.0,
-              anchor: const Offset(0.5, 0.5),
-              rotationType: RotationType.noRotation,
-            ),
-          ),
-          onTap: (PlacemarkMapObject self, Point point) {
-            if (cluster.count == 1) {
-              _onMarkerTap(cluster.stores.first);
-            } else {
-              _onClusterTap(cluster);
-            }
-          },
         );
-        placemarks.add(placemark);
+      } else {
+        _getOrCreateClusterMarker(cluster.count).then((markerBytes) {
+          if (_isDisposed || !mounted) return;
+
+          final updatedPlacemarks =
+              List<PlacemarkMapObject>.from(_placemarks.value);
+          updatedPlacemarks.add(
+            PlacemarkMapObject(
+              mapId: MapObjectId('cluster_${cluster.id}'),
+              point: Point(
+                  latitude: cluster.latitude, longitude: cluster.longitude),
+              opacity: 1.0,
+              consumeTapEvents: true,
+              icon: PlacemarkIcon.single(
+                PlacemarkIconStyle(
+                  image: BitmapDescriptor.fromBytes(markerBytes),
+                  scale: 1.0,
+                  anchor: const Offset(0.5, 0.5),
+                  rotationType: RotationType.noRotation,
+                ),
+              ),
+              onTap: (_, __) {
+                if (cluster.count == 1) {
+                  _onMarkerTap(cluster.stores.first);
+                } else {
+                  _onClusterTap(cluster);
+                }
+              },
+            ),
+          );
+          _placemarks.value = updatedPlacemarks;
+        });
       }
     }
 
@@ -749,35 +1008,60 @@ class _CustomerHomePageState extends State<CustomerHomePage>
     if (_isDisposed || !mounted) return;
 
     _selectedStore.value = store;
-    _startMarkerAnimation();
+
+    //Refresh markers to show active state
     _addShopMarkers();
 
     if (_sheetController.isAttached) {
       _sheetController.animateTo(
         0.22,
-        duration: const Duration(milliseconds: 300),
-        curve: Curves.easeInOut,
+        duration: const Duration(milliseconds: 250),
+        curve: Curves.easeOut,
       );
     }
 
     if (_mapController != null && !_isDisposed && mounted) {
-      // IMPROVED: More precise zoom and better centering
-      final offsetLatitude = store.latitude + 0.0006;
-
+      final offsetLatitude = store.latitude + 0.0005;
       _mapController!.moveCamera(
         CameraUpdate.newCameraPosition(
           CameraPosition(
-            target: Point(
-              latitude: offsetLatitude,
-              longitude: store.longitude,
-            ),
-            zoom: 16.8, // CHANGED: From 15.5 to 16.8 for closer view
+            target: Point(latitude: offsetLatitude, longitude: store.longitude),
+            zoom: 16.5,
           ),
         ),
-        animation: const MapAnimation(
-          type: MapAnimationType.smooth,
-          duration: 0.6,
+        animation:
+            const MapAnimation(type: MapAnimationType.smooth, duration: 0.5),
+      );
+    }
+  }
+
+  void _focusStoreOnMap(StoreModel store) {
+    if (_isDisposed || !mounted) return;
+
+    _selectedStore.value = store;
+
+    // Refresh markers to show active state
+    _addShopMarkers();
+
+    if (_sheetController.isAttached) {
+      _sheetController.animateTo(
+        0.22,
+        duration: const Duration(milliseconds: 250),
+        curve: Curves.easeOut,
+      );
+    }
+
+    if (_mapController != null && !_isDisposed && mounted) {
+      final offsetLatitude = store.latitude + 0.0005;
+      _mapController!.moveCamera(
+        CameraUpdate.newCameraPosition(
+          CameraPosition(
+            target: Point(latitude: offsetLatitude, longitude: store.longitude),
+            zoom: 16.5,
+          ),
         ),
+        animation:
+            const MapAnimation(type: MapAnimationType.smooth, duration: 0.5),
       );
     }
   }
@@ -785,9 +1069,11 @@ class _CustomerHomePageState extends State<CustomerHomePage>
   void _onClusterTap(StoreCluster cluster) {
     if (_isDisposed || !mounted || _mapController == null) return;
 
-    final currentZoom = _currentZoom.value;
+    if (cluster.count == 1) {
+      _onMarkerTap(cluster.stores.first);
+      return;
+    }
 
-    // Calculate center
     double minLat = cluster.stores.first.latitude;
     double maxLat = cluster.stores.first.latitude;
     double minLon = cluster.stores.first.longitude;
@@ -803,14 +1089,16 @@ class _CustomerHomePageState extends State<CustomerHomePage>
     final centerLat = (minLat + maxLat) / 2;
     final centerLon = (minLon + maxLon) / 2;
 
-    // Progressive zoom increment
+    final currentZoom = _currentZoom.value;
     final double newZoom;
-    if (currentZoom < 9.5) {
-      newZoom = 10.8; // From single cluster to medium clusters
-    } else if (currentZoom < 10.8) {
-      newZoom = 11.8; // From medium to tight clusters
+    if (currentZoom < 11.0) {
+      newZoom = 12.0;
+    } else if (currentZoom < 12.5) {
+      newZoom = 13.5;
+    } else if (currentZoom < 14.0) {
+      newZoom = 15.0;
     } else {
-      newZoom = 13.5; // To individual stores (above 12.5 threshold)
+      newZoom = 16.0;
     }
 
     _mapController!.moveCamera(
@@ -820,56 +1108,15 @@ class _CustomerHomePageState extends State<CustomerHomePage>
           zoom: newZoom,
         ),
       ),
-      animation: const MapAnimation(
-        type: MapAnimationType.smooth,
-        duration: 0.5,
-      ),
+      animation:
+          const MapAnimation(type: MapAnimationType.smooth, duration: 0.4),
     );
   }
 
   void _closeStoreCard() {
     if (_isDisposed || !mounted) return;
-
-    _stopMarkerAnimation();
     _selectedStore.value = null;
     _addShopMarkers();
-  }
-
-  void _focusStoreOnMap(StoreModel store) {
-    if (_isDisposed || !mounted) return;
-
-    _selectedStore.value = store;
-    _startMarkerAnimation();
-    _addShopMarkers();
-
-    if (_sheetController.isAttached) {
-      _sheetController.animateTo(
-        0.22,
-        duration: const Duration(milliseconds: 300),
-        curve: Curves.easeInOut,
-      );
-    }
-
-    if (_mapController != null && !_isDisposed && mounted) {
-      // IMPROVED: More precise zoom and better centering
-      final offsetLatitude = store.latitude + 0.0006;
-
-      _mapController!.moveCamera(
-        CameraUpdate.newCameraPosition(
-          CameraPosition(
-            target: Point(
-              latitude: offsetLatitude,
-              longitude: store.longitude,
-            ),
-            zoom: 16.8, // CHANGED: From 15.5 to 16.8 for closer view
-          ),
-        ),
-        animation: const MapAnimation(
-          type: MapAnimationType.smooth,
-          duration: 0.6,
-        ),
-      );
-    }
   }
 
   void _calculateDistances(Position userPosition) {
@@ -882,17 +1129,15 @@ class _CustomerHomePageState extends State<CustomerHomePage>
       );
       _stores[i] = _stores[i].copyWith(distance: distance);
     }
-
     _stores.sort((a, b) => (a.distance ?? 999).compareTo(b.distance ?? 999));
+
+    _updateFilteredStores(_filterState.value);
+
     if (mounted) setState(() {});
   }
 
   double _calculateDistance(
-    double lat1,
-    double lon1,
-    double lat2,
-    double lon2,
-  ) {
+      double lat1, double lon1, double lat2, double lon2) {
     const double earthRadius = 6371;
     final dLat = _toRadians(lat2 - lat1);
     final dLon = _toRadians(lon2 - lon1);
@@ -910,11 +1155,7 @@ class _CustomerHomePageState extends State<CustomerHomePage>
   double _toRadians(double degrees) => degrees * math.pi / 180;
 
   void _navigateToStoreDetails(StoreModel store) {
-    Navigator.pushNamed(
-      context,
-      AppRoutes.storeDetails,
-      arguments: store,
-    );
+    Navigator.pushNamed(context, AppRoutes.storeDetails, arguments: store);
   }
 
   void _navigateToFullMap() {
@@ -931,15 +1172,12 @@ class _CustomerHomePageState extends State<CustomerHomePage>
     );
   }
 
-  List<StoreModel> _getFilteredStores(
-    StoreTab tab,
-    String query,
-    String? category,
-    SortOption sortBy,
-  ) {
+  void _updateFilteredStores(StoreFilterState state) {
+    if (_lastFilterState == state) return;
+
     List<StoreModel> filtered = List.from(_stores);
 
-    switch (tab) {
+    switch (state.tab) {
       case StoreTab.deals:
         filtered =
             filtered.where((s) => _storeDeals.containsKey(s.id)).toList();
@@ -954,8 +1192,8 @@ class _CustomerHomePageState extends State<CustomerHomePage>
         break;
     }
 
-    if (query.isNotEmpty) {
-      final lowerQuery = query.toLowerCase();
+    if (state.searchQuery.isNotEmpty) {
+      final lowerQuery = state.searchQuery.toLowerCase();
       filtered = filtered.where((s) {
         return s.name.toLowerCase().contains(lowerQuery) ||
             s.category.toLowerCase().contains(lowerQuery) ||
@@ -963,11 +1201,11 @@ class _CustomerHomePageState extends State<CustomerHomePage>
       }).toList();
     }
 
-    if (category != null) {
-      filtered = filtered.where((s) => s.category == category).toList();
+    if (state.category != null) {
+      filtered = filtered.where((s) => s.category == state.category).toList();
     }
 
-    switch (sortBy) {
+    switch (state.sortOption) {
       case SortOption.distance:
         filtered
             .sort((a, b) => (a.distance ?? 999).compareTo(b.distance ?? 999));
@@ -980,7 +1218,8 @@ class _CustomerHomePageState extends State<CustomerHomePage>
         break;
     }
 
-    return filtered;
+    _cachedFilteredStores = filtered;
+    _lastFilterState = state;
   }
 
   @override
@@ -993,69 +1232,60 @@ class _CustomerHomePageState extends State<CustomerHomePage>
       backgroundColor: Theme.of(context).colorScheme.surface,
       body: Stack(
         children: [
-          // Map Layer with Gesture Detection
-          ValueListenableBuilder<List<PlacemarkMapObject>>(
-            valueListenable: _placemarks,
-            builder: (context, placemarks, _) {
-              return Listener(
-                onPointerDown: (_) {
-                  if (_selectedStore.value != null) {
-                    _closeStoreCard();
-                  }
-                },
-                child: YandexMap(
-                  onMapCreated: _onMapCreated,
-                  mapType: MapType.map,
-                  mapObjects: placemarks,
-                  onCameraPositionChanged: (cameraPosition, reason, finished) {
-                    // Update zoom level continuously
-                    _onZoomChanged(cameraPosition.zoom);
-
-                    // Close card when map is moved/scrolled
-                    if (reason == CameraUpdateReason.gestures &&
-                        _selectedStore.value != null) {
+          RepaintBoundary(
+            child: ValueListenableBuilder<List<PlacemarkMapObject>>(
+              valueListenable: _placemarks,
+              builder: (context, placemarks, _) {
+                return Listener(
+                  onPointerDown: (_) {
+                    if (_selectedStore.value != null) {
                       _closeStoreCard();
                     }
                   },
-                ),
-              );
-            },
+                  child: YandexMap(
+                    onMapCreated: _onMapCreated,
+                    mapType: MapType.map,
+                    mapObjects: placemarks,
+                    onCameraPositionChanged:
+                        (cameraPosition, reason, finished) {
+                      _onZoomChanged(cameraPosition.zoom);
+                      if (reason == CameraUpdateReason.gestures &&
+                          _selectedStore.value != null) {
+                        _closeStoreCard();
+                      }
+                    },
+                  ),
+                );
+              },
+            ),
           ),
 
-          // GradientAppBar
-          Positioned(
+          const Positioned(
             top: 0,
             left: 0,
             right: 0,
             child: GradientAppBar(
               title: 'Welcome, John Doe',
               showBackButton: false,
-              actions: [
-                NotificationButton(
-                  onPressed: () {
-                    Navigator.pushNamed(context, AppRoutes.notifications);
-                  },
-                ),
-              ],
+              actions: [NotificationButton()],
             ),
           ),
 
-          // Map Controls Layer
           Positioned(
             top: buttonTopPosition,
             right: 12.w,
-            child: Row(
-              spacing: 12.w,
+            child: Column(
+              spacing: 12.h,
               children: [
-                MapActionsButton(
+                MapActionButton(
                   onPressed: () => _getCurrentLocation(showLoading: true),
-                  icon: Image(
-                    image: const AssetImage("assets/icons/ic_navigate.png"),
+                  icon: Image.asset(
+                    'assets/icons/ic_navigate.png',
                     width: 20.w,
                     height: 20.h,
                   ),
                 ),
-                MapActionsButton(
+                MapActionButton(
                   onPressed: _navigateToFullMap,
                   icon: Icon(
                     Icons.fullscreen,
@@ -1067,24 +1297,20 @@ class _CustomerHomePageState extends State<CustomerHomePage>
             ),
           ),
 
-          // Compact Store Info Card
           ValueListenableBuilder<StoreModel?>(
             valueListenable: _selectedStore,
             builder: (context, selectedStore, _) {
               if (selectedStore == null) return const SizedBox.shrink();
-
               return FloatingStoreInfoCard(
                 store: selectedStore,
                 userPosition: _userPositionNotifier.value,
                 onClose: _closeStoreCard,
-                onViewStore: () {
-                  _navigateToStoreDetails(selectedStore);
-                },
+                onViewStore: () => _navigateToStoreDetails(selectedStore),
               );
             },
           ),
 
-          // Draggable Bottom Sheet
+          // FIXED: Always render sheet content
           DraggableScrollableSheet(
             controller: _sheetController,
             initialChildSize: 0.35,
@@ -1096,220 +1322,31 @@ class _CustomerHomePageState extends State<CustomerHomePage>
               return Container(
                 decoration: BoxDecoration(
                   color: Theme.of(context).colorScheme.surface,
-                  borderRadius: BorderRadius.vertical(
-                    top: Radius.circular(24.r),
-                  ),
+                  borderRadius:
+                      BorderRadius.vertical(top: Radius.circular(24.r)),
                   boxShadow: [
                     BoxShadow(
-                      color: Colors.black.withValues(alpha: 0.15),
-                      blurRadius: 20,
-                      offset: const Offset(0, -5),
+                      color: Colors.black.withValues(alpha: 0.08),
+                      blurRadius: 12,
+                      offset: const Offset(0, -2),
                     ),
                   ],
                 ),
-                child: ValueListenableBuilder<StoreTab>(
-                  valueListenable: _selectedTab,
-                  builder: (context, tab, _) {
-                    return ValueListenableBuilder<String>(
-                      valueListenable: _searchQuery,
-                      builder: (context, query, _) {
-                        return ValueListenableBuilder<String?>(
-                          valueListenable: _selectedCategory,
-                          builder: (context, category, _) {
-                            return ValueListenableBuilder<SortOption>(
-                              valueListenable: _sortOption,
-                              builder: (context, sortBy, _) {
-                                final filteredStores = _getFilteredStores(
-                                  tab,
-                                  query,
-                                  category,
-                                  sortBy,
-                                );
+                child: ValueListenableBuilder<StoreFilterState>(
+                  valueListenable: _filterState,
+                  builder: (context, filterState, _) {
+                    _updateFilteredStores(filterState);
 
-                                return ValueListenableBuilder<ViewMode>(
-                                  valueListenable: _viewMode,
-                                  builder: (context, viewMode, _) {
-                                    return CustomScrollView(
-                                      controller: scrollController,
-                                      physics: const ScrollPhysics(),
-                                      slivers: [
-                                        // Drag Handle
-                                        SliverToBoxAdapter(
-                                          child: Container(
-                                            width: double.infinity,
-                                            padding: EdgeInsets.symmetric(
-                                              vertical: 12.h,
-                                            ),
-                                            child: Center(
-                                              child: Container(
-                                                width: 40.w,
-                                                height: 4.h,
-                                                decoration: BoxDecoration(
-                                                  color: Colors.grey[400],
-                                                  borderRadius:
-                                                      BorderRadius.circular(
-                                                    2.r,
-                                                  ),
-                                                ),
-                                              ),
-                                            ),
-                                          ),
-                                        ),
-
-                                        // Search Bar
-                                        SliverToBoxAdapter(
-                                          child: Padding(
-                                            padding: EdgeInsets.symmetric(
-                                              horizontal: 16.w,
-                                            ),
-                                            child: SearchBarWidget(
-                                              searchQueryNotifier: _searchQuery,
-                                            ),
-                                          ),
-                                        ),
-
-                                        SliverToBoxAdapter(
-                                          child: SizedBox(height: 12.h),
-                                        ),
-
-                                        // Segmented Control
-                                        SliverToBoxAdapter(
-                                          child: Padding(
-                                            padding: EdgeInsets.symmetric(
-                                              horizontal: 16.w,
-                                            ),
-                                            child: SegmentedControlWidget(
-                                              selectedTabNotifier: _selectedTab,
-                                            ),
-                                          ),
-                                        ),
-
-                                        SliverToBoxAdapter(
-                                          child: SizedBox(height: 12.h),
-                                        ),
-
-                                        // Category Chips + View Toggle + Sort
-                                        SliverToBoxAdapter(
-                                          child: Padding(
-                                            padding: EdgeInsets.symmetric(
-                                              horizontal: 16.w,
-                                            ),
-                                            child: Row(
-                                              children: [
-                                                Expanded(
-                                                  child: CategoryChipsWidget(
-                                                    categories: _categories,
-                                                    selectedCategoryNotifier:
-                                                        _selectedCategory,
-                                                  ),
-                                                ),
-                                                SizedBox(width: 8.w),
-                                                ViewToggleButton(
-                                                  viewModeNotifier: _viewMode,
-                                                ),
-                                                SizedBox(width: 8.w),
-                                                SortButton(
-                                                  sortOptionNotifier:
-                                                      _sortOption,
-                                                ),
-                                              ],
-                                            ),
-                                          ),
-                                        ),
-
-                                        SliverToBoxAdapter(
-                                          child: SizedBox(height: 12.h),
-                                        ),
-
-                                        // Store List/Grid
-                                        if (filteredStores.isEmpty)
-                                          SliverFillRemaining(
-                                            hasScrollBody: false,
-                                            child: EmptyStateWidget(
-                                              tab: tab,
-                                              hasSearch: query.isNotEmpty ||
-                                                  category != null,
-                                            ),
-                                          )
-                                        else if (viewMode == ViewMode.grid)
-                                          SliverPadding(
-                                            padding: EdgeInsets.symmetric(
-                                              horizontal: 16.w,
-                                              vertical: 8.h,
-                                            ),
-                                            sliver: SliverGrid(
-                                              gridDelegate:
-                                                  SliverGridDelegateWithFixedCrossAxisCount(
-                                                crossAxisCount: 2,
-                                                crossAxisSpacing: 12.w,
-                                                mainAxisSpacing: 12.h,
-                                                childAspectRatio: 0.75,
-                                              ),
-                                              delegate:
-                                                  SliverChildBuilderDelegate(
-                                                (context, index) {
-                                                  final store =
-                                                      filteredStores[index];
-                                                  final deal =
-                                                      _storeDeals[store.id];
-
-                                                  return RepaintBoundary(
-                                                    child: UnifiedStoreGridCard(
-                                                      store: store,
-                                                      deal: deal,
-                                                      onTap: () =>
-                                                          _navigateToStoreDetails(
-                                                              store),
-                                                      onMapFocus: () =>
-                                                          _focusStoreOnMap(
-                                                              store),
-                                                    ),
-                                                  );
-                                                },
-                                                childCount:
-                                                    filteredStores.length,
-                                              ),
-                                            ),
-                                          )
-                                        else
-                                          SliverPadding(
-                                            padding: EdgeInsets.symmetric(
-                                              horizontal: 16.w,
-                                              vertical: 8.h,
-                                            ),
-                                            sliver: SliverList(
-                                              delegate:
-                                                  SliverChildBuilderDelegate(
-                                                (context, index) {
-                                                  final store =
-                                                      filteredStores[index];
-                                                  final deal =
-                                                      _storeDeals[store.id];
-
-                                                  return UnifiedStoreListCard(
-                                                    store: store,
-                                                    deal: deal,
-                                                    onTap: () =>
-                                                        _navigateToStoreDetails(
-                                                            store),
-                                                    onMapFocus: () =>
-                                                        _focusStoreOnMap(store),
-                                                  );
-                                                },
-                                                childCount:
-                                                    filteredStores.length,
-                                              ),
-                                            ),
-                                          ),
-                                      ],
-                                    );
-                                  },
-                                );
-                              },
-                            );
-                          },
-                        );
-                      },
+                    return StoreListView(
+                      scrollController: scrollController,
+                      filterState: filterState,
+                      filteredStores: _cachedFilteredStores,
+                      storeDeals: _storeDeals,
+                      categories: _categories,
+                      onFilterChanged: (newState) =>
+                          _filterState.value = newState,
+                      onStoreSelected: _navigateToStoreDetails,
+                      onStoreFocused: _focusStoreOnMap,
                     );
                   },
                 ),
@@ -1323,84 +1360,156 @@ class _CustomerHomePageState extends State<CustomerHomePage>
 }
 
 // ============================================================================
-// WIDGETS
+// OPTIMIZED STORE LIST VIEW - Separate widget to prevent parent rebuilds
 // ============================================================================
 
-class AnimatedSlideCard extends StatefulWidget {
-  final Widget child;
+class StoreListView extends StatelessWidget {
+  final ScrollController scrollController;
+  final StoreFilterState filterState;
+  final List<StoreModel> filteredStores;
+  final Map<String, String> storeDeals;
+  final List<String> categories;
+  final ValueChanged<StoreFilterState> onFilterChanged;
+  final ValueChanged<StoreModel> onStoreSelected;
+  final ValueChanged<StoreModel> onStoreFocused;
 
-  const AnimatedSlideCard({
-    required this.child,
+  const StoreListView({
+    required this.scrollController,
+    required this.filterState,
+    required this.filteredStores,
+    required this.storeDeals,
+    required this.categories,
+    required this.onFilterChanged,
+    required this.onStoreSelected,
+    required this.onStoreFocused,
     super.key,
   });
-
-  @override
-  State<AnimatedSlideCard> createState() => _AnimatedSlideCardState();
-}
-
-class _AnimatedSlideCardState extends State<AnimatedSlideCard>
-    with SingleTickerProviderStateMixin {
-  late AnimationController _controller;
-  late Animation<Offset> _slideAnimation;
-  late Animation<double> _fadeAnimation;
-
-  @override
-  void initState() {
-    super.initState();
-    _controller = AnimationController(
-      duration: const Duration(milliseconds: 300),
-      vsync: this,
-    );
-
-    _slideAnimation = Tween<Offset>(
-      begin: const Offset(0, -0.3),
-      end: Offset.zero,
-    ).animate(CurvedAnimation(
-      parent: _controller,
-      curve: Curves.easeOutCubic,
-    ));
-
-    _fadeAnimation = Tween<double>(
-      begin: 0.0,
-      end: 1.0,
-    ).animate(CurvedAnimation(
-      parent: _controller,
-      curve: Curves.easeOut,
-    ));
-
-    _controller.forward();
-  }
-
-  @override
-  void dispose() {
-    _controller.dispose();
-    super.dispose();
-  }
 
   @override
   Widget build(BuildContext context) {
-    return SlideTransition(
-      position: _slideAnimation,
-      child: FadeTransition(
-        opacity: _fadeAnimation,
-        child: widget.child,
-      ),
+    return CustomScrollView(
+      controller: scrollController,
+      physics: const ClampingScrollPhysics(),
+      slivers: [
+        // Drag Handle
+        SliverToBoxAdapter(
+          child: Center(
+            child: Container(
+              margin: EdgeInsets.symmetric(vertical: 12.h),
+              width: 40.w,
+              height: 4.h,
+              decoration: BoxDecoration(
+                color: Colors.grey[400],
+                borderRadius: BorderRadius.circular(2.r),
+              ),
+            ),
+          ),
+        ),
+
+        SliverToBoxAdapter(child: SizedBox(height: 12.h)),
+
+        // Tabs
+        SliverToBoxAdapter(
+          child: Padding(
+            padding: EdgeInsets.symmetric(horizontal: 16.w),
+            child: SegmentedControlWidget(
+              selectedTab: filterState.tab,
+              onTabChanged: (tab) {
+                onFilterChanged(filterState.copyWith(tab: tab));
+              },
+            ),
+          ),
+        ),
+
+        SliverToBoxAdapter(child: SizedBox(height: 12.h)),
+
+        // Filters Row
+        SliverToBoxAdapter(
+          child: Padding(
+            padding: EdgeInsets.symmetric(horizontal: 16.w),
+            child: Row(
+              children: [
+                Expanded(
+                  child: CategoryChipsWidget(
+                    categories: categories,
+                    selectedCategory: filterState.category,
+                    onCategoryChanged: (category) {
+                      onFilterChanged(filterState.copyWith(
+                        category: category,
+                        clearCategory: category == null,
+                      ));
+                    },
+                  ),
+                ),
+                SizedBox(width: 8.w),
+                SortButton(
+                  currentSort: filterState.sortOption,
+                  onSortChanged: (sort) {
+                    onFilterChanged(filterState.copyWith(sortOption: sort));
+                  },
+                ),
+              ],
+            ),
+          ),
+        ),
+
+        SliverToBoxAdapter(child: SizedBox(height: 12.h)),
+
+        // OPTIMIZED: Store List/Grid with proper keys and RepaintBoundary
+        if (filteredStores.isEmpty)
+          SliverFillRemaining(
+            hasScrollBody: false,
+            child: EmptyStateWidget(
+              tab: filterState.tab,
+              hasSearch: filterState.searchQuery.isNotEmpty ||
+                  filterState.category != null,
+            ),
+          )
+        else
+          SliverPadding(
+            padding: EdgeInsets.fromLTRB(16.w, 8.h, 16.w, 24.h),
+            sliver: SliverGrid(
+              gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                crossAxisCount: 2,
+                crossAxisSpacing: 12.w,
+                mainAxisSpacing: 12.h,
+                childAspectRatio: 0.75,
+              ),
+              delegate: SliverChildBuilderDelegate(
+                (context, index) {
+                  final store = filteredStores[index];
+                  return RepaintBoundary(
+                    key: ValueKey('grid_boundary_${store.id}'),
+                    child: StoreGridCard(
+                      key: ValueKey('grid_${store.id}'),
+                      store: store,
+                      deal: storeDeals[store.id],
+                      onTap: () => onStoreSelected(store),
+                      onMapFocus: () => onStoreFocused(store),
+                    ),
+                  );
+                },
+                childCount: filteredStores.length,
+                addAutomaticKeepAlives: true, // CRITICAL for performance
+                addRepaintBoundaries: false, // We handle it manually
+              ),
+            ),
+          )
+      ],
     );
   }
 }
 
-class NotificationButton extends StatelessWidget {
-  final VoidCallback onPressed;
+// ============================================================================
+// REUSABLE WIDGETS - HIGHLY OPTIMIZED
+// ============================================================================
 
-  const NotificationButton({
-    required this.onPressed,
-    super.key,
-  });
+class NotificationButton extends StatelessWidget {
+  const NotificationButton({super.key});
 
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: EdgeInsets.zero,
       decoration: BoxDecoration(
         color: Colors.white.withValues(alpha: 0.2),
         shape: BoxShape.circle,
@@ -1408,117 +1517,88 @@ class NotificationButton extends StatelessWidget {
       child: IconButton(
         padding: EdgeInsets.zero,
         icon: const Icon(Icons.notifications, color: Colors.white),
-        onPressed: onPressed,
+        onPressed: () => Navigator.pushNamed(context, AppRoutes.notifications),
       ),
     );
   }
 }
 
-class SearchBarWidget extends StatelessWidget {
-  final ValueNotifier<String> searchQueryNotifier;
+class MapActionButton extends StatelessWidget {
+  final VoidCallback onPressed;
+  final Widget icon;
 
-  const SearchBarWidget({
-    required this.searchQueryNotifier,
+  const MapActionButton({
+    required this.onPressed,
+    required this.icon,
     super.key,
   });
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      height: 48.h,
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(12.r),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.06),
-            blurRadius: 8,
-            offset: const Offset(0, 2),
-          ),
-        ],
-      ),
-      child: TextField(
-        onChanged: (value) => searchQueryNotifier.value = value,
-        decoration: InputDecoration(
-          hintText: 'Search stores, categories...',
-          hintStyle: TextStyle(
-            fontSize: 14.sp,
-            color: Colors.grey[500],
-          ),
-          prefixIcon: Icon(
-            Icons.search,
-            color: Colors.grey[600],
-            size: 20.sp,
-          ),
-          suffixIcon: ValueListenableBuilder<String>(
-            valueListenable: searchQueryNotifier,
-            builder: (context, query, _) {
-              if (query.isEmpty) return const SizedBox.shrink();
-              return IconButton(
-                icon: Icon(
-                  Icons.clear,
-                  color: Colors.grey[600],
-                  size: 20.sp,
-                ),
-                onPressed: () => searchQueryNotifier.value = '',
-              );
-            },
-          ),
-          border: InputBorder.none,
-          contentPadding:
-              EdgeInsets.symmetric(horizontal: 16.w, vertical: 12.h),
+    return GestureDetector(
+      onTap: onPressed,
+      child: Container(
+        padding: EdgeInsets.all(10.w),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(10.r),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: 0.08),
+              blurRadius: 6,
+              offset: const Offset(0, 1),
+            ),
+          ],
         ),
+        child: icon,
       ),
     );
   }
 }
 
 class SegmentedControlWidget extends StatelessWidget {
-  final ValueNotifier<StoreTab> selectedTabNotifier;
+  final StoreTab selectedTab;
+  final ValueChanged<StoreTab> onTabChanged;
 
   const SegmentedControlWidget({
-    required this.selectedTabNotifier,
+    required this.selectedTab,
+    required this.onTabChanged,
     super.key,
   });
 
   @override
   Widget build(BuildContext context) {
-    return ValueListenableBuilder<StoreTab>(
-      valueListenable: selectedTabNotifier,
-      builder: (context, selectedTab, _) {
-        return Container(
-          height: 44.h,
-          decoration: BoxDecoration(
-            color: Colors.grey[200],
-            borderRadius: BorderRadius.circular(12.r),
+    return Container(
+      height: 44.h,
+      decoration: BoxDecoration(
+        color: Colors.grey[200],
+        borderRadius: BorderRadius.circular(12.r),
+      ),
+      padding: EdgeInsets.all(4.w),
+      child: Row(
+        children: [
+          TabButton(
+            label: 'All',
+            isSelected: selectedTab == StoreTab.all,
+            onTap: () => onTabChanged(StoreTab.all),
           ),
-          padding: EdgeInsets.all(4.w),
-          child: Row(
-            children: [
-              TabButton(
-                label: 'All',
-                isSelected: selectedTab == StoreTab.all,
-                onTap: () => selectedTabNotifier.value = StoreTab.all,
-              ),
-              TabButton(
-                label: 'Deals',
-                isSelected: selectedTab == StoreTab.deals,
-                onTap: () => selectedTabNotifier.value = StoreTab.deals,
-              ),
-              TabButton(
-                label: 'Featured',
-                isSelected: selectedTab == StoreTab.featured,
-                onTap: () => selectedTabNotifier.value = StoreTab.featured,
-              ),
-              TabButton(
-                label: 'Nearby',
-                isSelected: selectedTab == StoreTab.nearby,
-                onTap: () => selectedTabNotifier.value = StoreTab.nearby,
-              ),
-            ],
+          TabButton(
+            label: 'Deals',
+            isSelected: selectedTab == StoreTab.deals,
+            onTap: () => onTabChanged(StoreTab.deals),
           ),
-        );
-      },
+          TabButton(
+            label: 'Featured',
+            isSelected: selectedTab == StoreTab.featured,
+            onTap: () => onTabChanged(StoreTab.featured),
+          ),
+          TabButton(
+            label: 'Nearby',
+            isSelected: selectedTab == StoreTab.nearby,
+            onTap: () => onTabChanged(StoreTab.nearby),
+          ),
+        ],
+      ),
     );
   }
 }
@@ -1548,9 +1628,9 @@ class TabButton extends StatelessWidget {
             boxShadow: isSelected
                 ? [
                     BoxShadow(
-                      color: Colors.black.withValues(alpha: 0.08),
-                      blurRadius: 4,
-                      offset: const Offset(0, 2),
+                      color: Colors.black.withValues(alpha: 0.04),
+                      blurRadius: 3,
+                      offset: const Offset(0, 1),
                     ),
                   ]
                 : [],
@@ -1575,137 +1655,86 @@ class TabButton extends StatelessWidget {
 
 class CategoryChipsWidget extends StatelessWidget {
   final List<String> categories;
-  final ValueNotifier<String?> selectedCategoryNotifier;
+  final String? selectedCategory;
+  final ValueChanged<String?> onCategoryChanged;
 
   const CategoryChipsWidget({
     required this.categories,
-    required this.selectedCategoryNotifier,
+    required this.selectedCategory,
+    required this.onCategoryChanged,
     super.key,
   });
 
   @override
   Widget build(BuildContext context) {
-    return ValueListenableBuilder<String?>(
-      valueListenable: selectedCategoryNotifier,
-      builder: (context, selectedCategory, _) {
-        return SizedBox(
-          height: 32.h,
-          child: ListView.builder(
-            scrollDirection: Axis.horizontal,
-            itemCount: categories.length,
-            itemBuilder: (context, index) {
-              final category = categories[index];
-              final isSelected = selectedCategory == category;
+    return SizedBox(
+      height: 32.h,
+      child: ListView.builder(
+        scrollDirection: Axis.horizontal,
+        itemCount: categories.length,
+        itemBuilder: (context, index) {
+          final category = categories[index];
+          final isSelected = selectedCategory == category;
 
-              return Padding(
-                padding: EdgeInsets.only(right: 8.w),
-                child: GestureDetector(
-                  onTap: () {
-                    selectedCategoryNotifier.value =
-                        isSelected ? null : category;
-                  },
-                  child: Container(
-                    padding:
-                        EdgeInsets.symmetric(horizontal: 12.w, vertical: 6.h),
-                    decoration: BoxDecoration(
-                      color: isSelected
-                          ? Theme.of(context).primaryColor
-                          : Colors.white,
-                      borderRadius: BorderRadius.circular(8.r),
-                      border: Border.all(
-                        color: isSelected
-                            ? Theme.of(context).primaryColor
-                            : Colors.grey[300]!,
-                      ),
-                    ),
-                    child: Text(
-                      category,
-                      style: TextStyle(
-                        fontSize: 12.sp,
-                        fontWeight: FontWeight.w500,
-                        color: isSelected ? Colors.white : Colors.grey[800],
-                      ),
-                    ),
+          return Padding(
+            padding: EdgeInsets.only(right: 8.w),
+            child: GestureDetector(
+              onTap: () => onCategoryChanged(isSelected ? null : category),
+              child: Container(
+                padding: EdgeInsets.symmetric(horizontal: 12.w, vertical: 6.h),
+                decoration: BoxDecoration(
+                  color: isSelected
+                      ? Theme.of(context).primaryColor
+                      : Colors.white,
+                  borderRadius: BorderRadius.circular(8.r),
+                  border: Border.all(
+                    color: isSelected
+                        ? Theme.of(context).primaryColor
+                        : Colors.grey[300]!,
                   ),
                 ),
-              );
-            },
-          ),
-        );
-      },
-    );
-  }
-}
-
-class ViewToggleButton extends StatelessWidget {
-  final ValueNotifier<ViewMode> viewModeNotifier;
-
-  const ViewToggleButton({
-    required this.viewModeNotifier,
-    super.key,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return ValueListenableBuilder<ViewMode>(
-      valueListenable: viewModeNotifier,
-      builder: (context, viewMode, _) {
-        return GestureDetector(
-          onTap: () {
-            viewModeNotifier.value =
-                viewMode == ViewMode.grid ? ViewMode.list : ViewMode.grid;
-          },
-          child: Container(
-            width: 36.w,
-            height: 36.h,
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(8.r),
-              border: Border.all(color: Colors.grey[300]!),
+                child: Text(
+                  category,
+                  style: TextStyle(
+                    fontSize: 12.sp,
+                    fontWeight: FontWeight.w500,
+                    color: isSelected ? Colors.white : Colors.grey[800],
+                  ),
+                ),
+              ),
             ),
-            child: Icon(
-              viewMode == ViewMode.grid ? Icons.grid_view : Icons.view_list,
-              size: 18.sp,
-              color: Theme.of(context).primaryColor,
-            ),
-          ),
-        );
-      },
+          );
+        },
+      ),
     );
   }
 }
 
 class SortButton extends StatelessWidget {
-  final ValueNotifier<SortOption> sortOptionNotifier;
+  final SortOption currentSort;
+  final ValueChanged<SortOption> onSortChanged;
 
   const SortButton({
-    required this.sortOptionNotifier,
+    required this.currentSort,
+    required this.onSortChanged,
     super.key,
   });
 
   @override
   Widget build(BuildContext context) {
-    return ValueListenableBuilder<SortOption>(
-      valueListenable: sortOptionNotifier,
-      builder: (context, sortOption, _) {
-        return GestureDetector(
-          onTap: () => _showSortMenu(context),
-          child: Container(
-            width: 36.w,
-            height: 36.h,
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(8.r),
-              border: Border.all(color: Colors.grey[300]!),
-            ),
-            child: Icon(
-              Icons.sort,
-              size: 18.sp,
-              color: Theme.of(context).primaryColor,
-            ),
-          ),
-        );
-      },
+    return GestureDetector(
+      onTap: () => _showSortMenu(context),
+      child: Container(
+        width: 36.w,
+        height: 36.h,
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(8.r),
+          border: Border.all(color: Colors.grey[300]!),
+        ),
+        child: Icon(Icons.sort,
+            size: 18.sp, color: Theme.of(context).primaryColor),
+      ),
     );
   }
 
@@ -1730,38 +1759,33 @@ class SortButton extends StatelessWidget {
               ),
             ),
             SizedBox(height: 16.h),
-            Text(
-              'Sort By',
-              style: TextStyle(
-                fontSize: 16.sp,
-                fontWeight: FontWeight.bold,
-              ),
-            ),
+            Text('Sort By',
+                style: TextStyle(fontSize: 16.sp, fontWeight: FontWeight.bold)),
             SizedBox(height: 16.h),
             SortOptionTile(
               label: 'Distance',
               icon: Icons.location_on,
-              isSelected: sortOptionNotifier.value == SortOption.distance,
+              isSelected: currentSort == SortOption.distance,
               onTap: () {
-                sortOptionNotifier.value = SortOption.distance;
+                onSortChanged(SortOption.distance);
                 Navigator.pop(context);
               },
             ),
             SortOptionTile(
               label: 'Rating',
               icon: Icons.star,
-              isSelected: sortOptionNotifier.value == SortOption.rating,
+              isSelected: currentSort == SortOption.rating,
               onTap: () {
-                sortOptionNotifier.value = SortOption.rating;
+                onSortChanged(SortOption.rating);
                 Navigator.pop(context);
               },
             ),
             SortOptionTile(
               label: 'Name (A-Z)',
               icon: Icons.sort_by_alpha,
-              isSelected: sortOptionNotifier.value == SortOption.name,
+              isSelected: currentSort == SortOption.name,
               onTap: () {
-                sortOptionNotifier.value = SortOption.name;
+                onSortChanged(SortOption.name);
                 Navigator.pop(context);
               },
             ),
@@ -1809,176 +1833,13 @@ class SortOptionTile extends StatelessWidget {
   }
 }
 
-class UnifiedStoreListCard extends StatelessWidget {
+class StoreGridCard extends StatelessWidget {
   final StoreModel store;
   final String? deal;
   final VoidCallback onTap;
   final VoidCallback onMapFocus;
 
-  const UnifiedStoreListCard({
-    required this.store,
-    this.deal,
-    required this.onTap,
-    required this.onMapFocus,
-    super.key,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      margin: EdgeInsets.only(bottom: 12.h),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(16.r),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.06),
-            blurRadius: 8,
-            offset: const Offset(0, 2),
-          ),
-        ],
-      ),
-      child: Material(
-        color: Colors.transparent,
-        child: InkWell(
-          onTap: onTap,
-          borderRadius: BorderRadius.circular(16.r),
-          child: Padding(
-            padding: EdgeInsets.all(14.w),
-            child: Row(
-              children: [
-                Container(
-                  width: 56.w,
-                  height: 56.h,
-                  decoration: BoxDecoration(
-                    gradient: LinearGradient(
-                      colors: [
-                        Theme.of(context).primaryColor.withValues(alpha: 0.15),
-                        Theme.of(context).primaryColor.withValues(alpha: 0.05),
-                      ],
-                    ),
-                    borderRadius: BorderRadius.circular(12.r),
-                  ),
-                  child: Icon(
-                    Icons.storefront,
-                    color: Theme.of(context).primaryColor,
-                    size: 26.sp,
-                  ),
-                ),
-                SizedBox(width: 12.w),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
-                        children: [
-                          Expanded(
-                            child: Text(
-                              store.name,
-                              style: TextStyle(
-                                fontSize: 15.sp,
-                                fontWeight: FontWeight.w600,
-                                color: Colors.black,
-                              ),
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                          ),
-                          if (deal != null) ...[
-                            SizedBox(width: 8.w),
-                            Container(
-                              padding: EdgeInsets.symmetric(
-                                  horizontal: 8.w, vertical: 3.h),
-                              decoration: BoxDecoration(
-                                gradient: const LinearGradient(
-                                  colors: [Colors.red, Colors.orange],
-                                ),
-                                borderRadius: BorderRadius.circular(6.r),
-                              ),
-                              child: Text(
-                                deal ?? '',
-                                style: TextStyle(
-                                  fontSize: 10.sp,
-                                  fontWeight: FontWeight.bold,
-                                  color: Colors.white,
-                                ),
-                              ),
-                            ),
-                          ],
-                        ],
-                      ),
-                      SizedBox(height: 4.h),
-                      Text(
-                        store.category,
-                        style: TextStyle(
-                          fontSize: 12.sp,
-                          color: Colors.grey[600],
-                        ),
-                      ),
-                      SizedBox(height: 6.h),
-                      Row(
-                        children: [
-                          Icon(Icons.star, size: 14.sp, color: Colors.amber),
-                          SizedBox(width: 4.w),
-                          Text(
-                            '${store.rating}',
-                            style: TextStyle(
-                              fontSize: 13.sp,
-                              fontWeight: FontWeight.w600,
-                              color: Colors.black,
-                            ),
-                          ),
-                          if (store.distance != null) ...[
-                            SizedBox(width: 12.w),
-                            Icon(
-                              Icons.location_on,
-                              size: 14.sp,
-                              color: Colors.grey[600],
-                            ),
-                            SizedBox(width: 2.w),
-                            Flexible(
-                              child: Text(
-                                '${store.distance!.toStringAsFixed(1)} km',
-                                style: TextStyle(
-                                  fontSize: 12.sp,
-                                  color: Colors.grey[600],
-                                ),
-                                overflow: TextOverflow.ellipsis,
-                              ),
-                            ),
-                          ],
-                        ],
-                      ),
-                    ],
-                  ),
-                ),
-                SizedBox(width: 8.w),
-                IconButton(
-                  onPressed: onMapFocus,
-                  icon: Icon(
-                    Icons.location_searching,
-                    color: Theme.of(context).primaryColor,
-                    size: 20.sp,
-                  ),
-                  padding: EdgeInsets.zero,
-                  constraints: const BoxConstraints(),
-                ),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class UnifiedStoreGridCard extends StatelessWidget {
-  final StoreModel store;
-  final String? deal;
-  final VoidCallback onTap;
-  final VoidCallback onMapFocus;
-
-  const UnifiedStoreGridCard({
+  const StoreGridCard({
     required this.store,
     this.deal,
     required this.onTap,
@@ -1994,9 +1855,9 @@ class UnifiedStoreGridCard extends StatelessWidget {
         borderRadius: BorderRadius.circular(16.r),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withValues(alpha: 0.06),
-            blurRadius: 8,
-            offset: const Offset(0, 2),
+            color: Colors.black.withValues(alpha: 0.03),
+            blurRadius: 6,
+            offset: const Offset(0, 1),
           ),
         ],
       ),
@@ -2010,55 +1871,18 @@ class UnifiedStoreGridCard extends StatelessWidget {
             children: [
               Stack(
                 children: [
-                  Container(
-                    height: 100.h,
-                    decoration: BoxDecoration(
-                      gradient: LinearGradient(
-                        begin: Alignment.topLeft,
-                        end: Alignment.bottomRight,
-                        colors: [
-                          Theme.of(context)
-                              .primaryColor
-                              .withValues(alpha: 0.15),
-                          Theme.of(context)
-                              .primaryColor
-                              .withValues(alpha: 0.05),
-                        ],
-                      ),
-                      borderRadius: BorderRadius.vertical(
-                        top: Radius.circular(16.r),
-                      ),
-                    ),
-                    child: Center(
-                      child: Icon(
-                        Icons.storefront,
-                        color: Theme.of(context).primaryColor,
-                        size: 40.sp,
-                      ),
-                    ),
+                  OptimizedStoreImage(
+                    imageUrl: store.coverImageUrl,
+                    size: double.infinity,
+                    height: 100,
+                    borderRadius: 16,
+                    topOnly: true,
                   ),
                   if (deal != null)
                     Positioned(
                       top: 8.h,
                       left: 8.w,
-                      child: Container(
-                        padding: EdgeInsets.symmetric(
-                            horizontal: 8.w, vertical: 4.h),
-                        decoration: BoxDecoration(
-                          gradient: const LinearGradient(
-                            colors: [Colors.red, Colors.orange],
-                          ),
-                          borderRadius: BorderRadius.circular(6.r),
-                        ),
-                        child: Text(
-                          deal ?? '',
-                          style: TextStyle(
-                            fontSize: 10.sp,
-                            fontWeight: FontWeight.bold,
-                            color: Colors.white,
-                          ),
-                        ),
-                      ),
+                      child: DealBadge(deal: deal!),
                     ),
                   Positioned(
                     top: 8.h,
@@ -2105,9 +1929,7 @@ class UnifiedStoreGridCard extends StatelessWidget {
                           Text(
                             store.category,
                             style: TextStyle(
-                              fontSize: 11.sp,
-                              color: Colors.grey[600],
-                            ),
+                                fontSize: 11.sp, color: Colors.grey[600]),
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
                           ),
@@ -2135,19 +1957,15 @@ class UnifiedStoreGridCard extends StatelessWidget {
                             SizedBox(height: 4.h),
                             Row(
                               children: [
-                                Icon(
-                                  Icons.location_on,
-                                  size: 13.sp,
-                                  color: Colors.grey[600],
-                                ),
+                                Icon(Icons.location_on,
+                                    size: 13.sp, color: Colors.grey[600]),
                                 SizedBox(width: 2.w),
                                 Flexible(
                                   child: Text(
                                     '${store.distance!.toStringAsFixed(1)} km',
                                     style: TextStyle(
-                                      fontSize: 11.sp,
-                                      color: Colors.grey[600],
-                                    ),
+                                        fontSize: 11.sp,
+                                        color: Colors.grey[600]),
                                     overflow: TextOverflow.ellipsis,
                                   ),
                                 ),
@@ -2162,6 +1980,92 @@ class UnifiedStoreGridCard extends StatelessWidget {
               ),
             ],
           ),
+        ),
+      ),
+    );
+  }
+}
+
+// CRITICAL: Optimized image loading with aggressive caching
+class OptimizedStoreImage extends StatelessWidget {
+  final String? imageUrl;
+  final double size;
+  final double? height;
+  final double borderRadius;
+  final bool topOnly;
+
+  const OptimizedStoreImage({
+    required this.imageUrl,
+    required this.size,
+    this.height,
+    required this.borderRadius,
+    this.topOnly = false,
+    super.key,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final radius = topOnly
+        ? BorderRadius.vertical(top: Radius.circular(borderRadius.r))
+        : BorderRadius.circular(borderRadius.r);
+
+    return ClipRRect(
+      borderRadius: radius,
+      child: imageUrl != null
+          ? CachedNetworkImage(
+              imageUrl: imageUrl!,
+              width: size == double.infinity ? double.infinity : size.w,
+              height: (height ?? size).h,
+              fit: BoxFit.cover,
+              // CRITICAL: Aggressive memory caching
+              memCacheWidth: 200,
+              memCacheHeight: 200,
+              maxHeightDiskCache: 200,
+              maxWidthDiskCache: 200,
+              // Faster placeholder
+              placeholder: (context, url) => Container(color: Colors.grey[100]),
+              errorWidget: (context, url, error) => _buildPlaceholder(context),
+              // CRITICAL: Fade in only first time
+              fadeInDuration: const Duration(milliseconds: 150),
+              fadeOutDuration: const Duration(milliseconds: 50),
+            )
+          : _buildPlaceholder(context),
+    );
+  }
+
+  Widget _buildPlaceholder(BuildContext context) {
+    return Container(
+      width: size == double.infinity ? double.infinity : size.w,
+      height: (height ?? size).h,
+      color: Theme.of(context).primaryColor.withValues(alpha: 0.08),
+      child: Icon(
+        Icons.storefront,
+        color: Theme.of(context).primaryColor.withValues(alpha: 0.4),
+        size: (size == double.infinity ? 40 : size * 0.4).sp,
+      ),
+    );
+  }
+}
+
+class DealBadge extends StatelessWidget {
+  final String deal;
+
+  const DealBadge({required this.deal, super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: EdgeInsets.symmetric(horizontal: 8.w, vertical: 4.h),
+      decoration: BoxDecoration(
+        gradient: const LinearGradient(colors: [Colors.red, Colors.orange]),
+        borderRadius: BorderRadius.circular(6.r),
+      ),
+      child: Text(
+        deal,
+        style: TextStyle(
+          fontSize: 10.sp,
+          fontWeight: FontWeight.bold,
+          color: Colors.white,
         ),
       ),
     );
@@ -2183,81 +2087,37 @@ class EmptyStateWidget extends StatelessWidget {
     String message;
     IconData icon;
 
-    if (hasSearch) {
-      message = 'No stores found\nTry adjusting your filters';
-      icon = Icons.search_off;
-    } else {
-      switch (tab) {
-        case StoreTab.deals:
-          message = 'No deals available\nCheck back later';
-          icon = Icons.local_offer_outlined;
-          break;
-        case StoreTab.featured:
-          message = 'No featured stores\nCheck back later';
-          icon = Icons.star_outline;
-          break;
-        case StoreTab.nearby:
-          message = 'No stores nearby\nTry expanding your search';
-          icon = Icons.location_off;
-          break;
-        default:
-          message = 'No stores available';
-          icon = Icons.store_outlined;
-      }
+    switch (tab) {
+      case StoreTab.deals:
+        message = 'No deals available\nCheck back later';
+        icon = Icons.local_offer_outlined;
+        break;
+      case StoreTab.featured:
+        message = 'No featured stores\nCheck back later';
+        icon = Icons.star_outline;
+        break;
+      case StoreTab.nearby:
+        message = 'No stores nearby\nTry expanding your search';
+        icon = Icons.location_off;
+        break;
+      default:
+        message = 'No stores available';
+        icon = Icons.store_outlined;
     }
 
     return Center(
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Icon(
-            icon,
-            size: 64.sp,
-            color: Colors.grey[400],
-          ),
+          Icon(icon, size: 64.sp, color: Colors.grey[400]),
           SizedBox(height: 16.h),
           Text(
             message,
             textAlign: TextAlign.center,
             style: TextStyle(
-              fontSize: 15.sp,
-              color: Colors.grey[600],
-              height: 1.4,
-            ),
+                fontSize: 15.sp, color: Colors.grey[600], height: 1.4),
           ),
         ],
-      ),
-    );
-  }
-}
-
-class MapActionsButton extends StatelessWidget {
-  final VoidCallback onPressed;
-  final Widget icon;
-
-  const MapActionsButton({
-    required this.onPressed,
-    super.key,
-    required this.icon,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: onPressed,
-      child: Container(
-        padding: EdgeInsets.all(10.w),
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(10.r),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withValues(alpha: 0.15),
-              blurRadius: 6,
-            ),
-          ],
-        ),
-        child: icon,
       ),
     );
   }

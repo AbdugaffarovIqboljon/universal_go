@@ -18,8 +18,8 @@ import 'package:universal_go/features/cart/domain/usecases/update_cart_quantity_
 import 'package:universal_go/features/cart/presentation/bloc/cart_bloc.dart';
 
 import 'package:universal_go/core/services/firebase/firebase_service_impl.dart';
-import 'package:universal_go/core/services/location/location_service.dart';
-import 'package:universal_go/core/services/location/location_service_impl.dart';
+import 'package:universal_go/core/services/map/location_service.dart';
+import 'package:universal_go/core/services/map/location_service_impl.dart';
 
 final sl = GetIt.instance;
 

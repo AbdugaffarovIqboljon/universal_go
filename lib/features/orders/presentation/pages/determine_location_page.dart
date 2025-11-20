@@ -1,5 +1,3 @@
-// lib/features/location/customer_current_location_determiner.dart
-
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
@@ -44,7 +42,6 @@ class _CustomerCurrentLocationDeterminerState
   final isLoadingAddress = ValueNotifier<bool>(false);
   final isLoadingCurrentLocation = ValueNotifier<bool>(false);
   final isSearching = ValueNotifier<bool>(false);
-
   List<SearchResultItem> searchResults = [];
   Timer? searchDebounce;
 
