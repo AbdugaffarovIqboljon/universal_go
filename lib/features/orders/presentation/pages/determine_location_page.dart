@@ -20,6 +20,32 @@ class SelectedLocation {
   });
 }
 
+enum LocationCategory {
+  home,
+  business,
+  landmark,
+  street,
+  building,
+  generic;
+
+  IconData get icon {
+    switch (this) {
+      case LocationCategory.home:
+        return Icons.home;
+      case LocationCategory.business:
+        return Icons.store;
+      case LocationCategory.landmark:
+        return Icons.location_city;
+      case LocationCategory.street:
+        return Icons.route;
+      case LocationCategory.building:
+        return Icons.apartment;
+      case LocationCategory.generic:
+        return Icons.place;
+    }
+  }
+}
+
 class CustomerCurrentLocationDeterminer extends StatefulWidget {
   const CustomerCurrentLocationDeterminer({super.key});
 
@@ -42,10 +68,12 @@ class _CustomerCurrentLocationDeterminerState
   final isLoadingAddress = ValueNotifier<bool>(false);
   final isLoadingCurrentLocation = ValueNotifier<bool>(false);
   final isSearching = ValueNotifier<bool>(false);
-  List<SearchResultItem> searchResults = [];
+  final isSearchAvailable = ValueNotifier<bool>(true);
+  List<EnhancedSearchResult> searchResults = [];
   Timer? searchDebounce;
 
   SearchSession? _activeSearchSession;
+  SearchSession? _activeBusinessSearchSession;
 
   late AnimationController pulseController;
   late Animation<double> pulseAnimation;
@@ -79,7 +107,9 @@ class _CustomerCurrentLocationDeterminerState
     isLoadingAddress.dispose();
     isLoadingCurrentLocation.dispose();
     isSearching.dispose();
+    isSearchAvailable.dispose();
     _activeSearchSession?.close();
+    _activeBusinessSearchSession?.close();
     super.dispose();
   }
 
@@ -146,7 +176,6 @@ class _CustomerCurrentLocationDeterminerState
     debugPrint('🔍 Reverse geocoding: ${point.latitude}, ${point.longitude}');
 
     try {
-      // Close previous session if exists
       await _activeSearchSession?.close();
 
       final resultWithSession = YandexSearch.searchByPoint(
@@ -159,7 +188,6 @@ class _CustomerCurrentLocationDeterminerState
         ),
       );
 
-      // Await to get the tuple
       final sessionAndFuture = await resultWithSession;
       final session = sessionAndFuture.$1;
       final resultFuture = sessionAndFuture.$2;
@@ -187,9 +215,8 @@ class _CustomerCurrentLocationDeterminerState
       }
 
       if (foundAddress.isEmpty) {
-        debugPrint('⚠️ No valid address found, using coordinates');
-        foundAddress =
-            '${point.latitude.toStringAsFixed(6)}, ${point.longitude.toStringAsFixed(6)}';
+        debugPrint('⚠️ No valid address found, using placeholder');
+        foundAddress = 'Selected location on map';
         foundDetails = 'Tap search to find nearby addresses';
       }
 
@@ -207,15 +234,14 @@ class _CustomerCurrentLocationDeterminerState
       debugPrint('❌ Reverse geocoding error: $e');
 
       if (e.toString().contains('MissingPluginException')) {
-        debugPrint(
-            '⚠️ Search API not available. Make sure you\'re using the FULL variant of yandex_mapkit');
+        debugPrint('⚠️ Search API not available - using fallback');
+        isSearchAvailable.value = false;
       }
 
       if (mounted) {
         setState(() {
-          selectedAddress =
-              '${point.latitude.toStringAsFixed(6)}, ${point.longitude.toStringAsFixed(6)}';
-          addressDetails = 'Search not available';
+          selectedAddress = 'Selected location on map';
+          addressDetails = 'Use the search bar to find your address';
         });
       }
       isLoadingAddress.value = false;
@@ -239,100 +265,59 @@ class _CustomerCurrentLocationDeterminerState
     isSearching.value = true;
 
     searchDebounce = Timer(const Duration(milliseconds: 500), () {
-      _performSearch(query);
+      _performEnhancedSearch(query);
     });
   }
 
-  Future<void> _performSearch(String query) async {
+  Future<void> _performEnhancedSearch(String query) async {
     if (query.trim().isEmpty || !mounted) return;
 
-    debugPrint('🔎 Searching for: $query');
+    debugPrint('🔎 Enhanced search for: $query');
+    isSearching.value = true;
 
     try {
-      // Close previous session if exists
       await _activeSearchSession?.close();
+      await _activeBusinessSearchSession?.close();
 
       final searchCenter = selectedPoint ?? storeLocation;
 
-      final resultWithSession = YandexSearch.searchByText(
-        searchText: query,
-        geometry: Geometry.fromPoint(searchCenter),
-        searchOptions: const SearchOptions(
-          searchType: SearchType.geo,
-          resultPageSize: 20,
-          geometry: true,
-        ),
-      );
+      // Run both GEO and BIZ searches in parallel
+      final geoFuture = _searchGeo(query, searchCenter);
+      final bizFuture = _searchBusiness(query, searchCenter);
 
-      // Await to get the tuple
-      final sessionAndFuture = await resultWithSession;
-      final session = sessionAndFuture.$1;
-      final resultFuture = sessionAndFuture.$2;
+      final results = await Future.wait([geoFuture, bizFuture]);
+      final geoResults = results[0];
+      final bizResults = results[1];
 
-      _activeSearchSession = session;
+      // Merge and process results
+      final allResults = <EnhancedSearchResult>[...geoResults, ...bizResults];
 
-      final result = await resultFuture;
+      // Remove duplicates based on proximity (within 50m)
+      final uniqueResults = _deduplicateResults(allResults);
 
-      debugPrint('📋 Search results: ${result.items?.length ?? 0}');
+      // Sort by relevance: exact matches first, then by distance
+      uniqueResults.sort((a, b) {
+        final aExact = a.title.toLowerCase().contains(query.toLowerCase());
+        final bExact = b.title.toLowerCase().contains(query.toLowerCase());
 
-      if (result.items != null && mounted) {
-        final items = <SearchResultItem>[];
+        if (aExact && !bExact) return -1;
+        if (!aExact && bExact) return 1;
 
-        for (final item in result.items!) {
-          Point? point;
+        return a.distance.compareTo(b.distance);
+      });
 
-          if (item.geometry.isNotEmpty) {
-            final geometry = item.geometry.first;
-            if (geometry.point != null) {
-              point = geometry.point!;
-            } else if (geometry.boundingBox != null) {
-              final box = geometry.boundingBox!;
-              point = Point(
-                latitude: (box.northEast.latitude + box.southWest.latitude) / 2,
-                longitude:
-                    (box.northEast.longitude + box.southWest.longitude) / 2,
-              );
-            }
-          }
+      debugPrint('✅ Total unique results: ${uniqueResults.length}');
 
-          if (point == null) continue;
-
-          final title = item.name;
-          if (title.isEmpty || _isCoordinateString(title)) continue;
-
-          final distance = _calculateDistance(point);
-          final distanceText = distance < 1
-              ? '${(distance * 1000).toStringAsFixed(0)}m away'
-              : '${distance.toStringAsFixed(1)}km away';
-
-          items.add(SearchResultItem(
-            title: title,
-            subtitle: distanceText,
-            point: point,
-          ));
-        }
-
-        if (mounted) {
-          setState(() => searchResults = items);
-        }
-      } else if (mounted) {
-        setState(() => searchResults = []);
+      if (mounted) {
+        setState(() => searchResults = uniqueResults);
       }
 
       isSearching.value = false;
-      await session.close();
-      _activeSearchSession = null;
-    } catch (e, stackTrace) {
-      debugPrint('❌ Search error: $e');
-      debugPrint('❌ Stack trace: $stackTrace');
+    } catch (e) {
+      debugPrint('❌ Enhanced search error: $e');
 
-      if (e.toString().contains('MissingPluginException') && mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Search requires the full version of Yandex MapKit'),
-            duration: Duration(seconds: 3),
-          ),
-        );
+      if (e.toString().contains('MissingPluginException')) {
+        isSearchAvailable.value = false;
       }
 
       if (mounted) {
@@ -342,17 +327,221 @@ class _CustomerCurrentLocationDeterminerState
     }
   }
 
-  Future<void> _selectSearchResult(SearchResultItem item) async {
+  Future<List<EnhancedSearchResult>> _searchGeo(
+    String query,
+    Point center,
+  ) async {
+    try {
+      final resultWithSession = YandexSearch.searchByText(
+        searchText: query,
+        geometry: Geometry.fromPoint(center),
+        searchOptions: const SearchOptions(
+          searchType: SearchType.geo,
+          resultPageSize: 30,
+          geometry: true,
+        ),
+      );
+
+      final sessionAndFuture = await resultWithSession;
+      final session = sessionAndFuture.$1;
+      final resultFuture = sessionAndFuture.$2;
+
+      _activeSearchSession = session;
+      final result = await resultFuture;
+
+      debugPrint('📍 GEO results: ${result.items?.length ?? 0}');
+
+      final items = result.items != null
+          ? _processSearchResults(result.items!, center)
+          : <EnhancedSearchResult>[];
+
+      await session.close();
+      _activeSearchSession = null;
+
+      return items;
+    } catch (e) {
+      debugPrint('❌ GEO search error: $e');
+      return [];
+    }
+  }
+
+  Future<List<EnhancedSearchResult>> _searchBusiness(
+    String query,
+    Point center,
+  ) async {
+    try {
+      final resultWithSession = YandexSearch.searchByText(
+        searchText: query,
+        geometry: Geometry.fromPoint(center),
+        searchOptions: const SearchOptions(
+          searchType: SearchType.biz,
+          resultPageSize: 30,
+          geometry: true,
+        ),
+      );
+
+      final sessionAndFuture = await resultWithSession;
+      final session = sessionAndFuture.$1;
+      final resultFuture = sessionAndFuture.$2;
+
+      _activeBusinessSearchSession = session;
+      final result = await resultFuture;
+
+      debugPrint('🏪 BIZ results: ${result.items?.length ?? 0}');
+
+      final items = result.items != null
+          ? _processSearchResults(result.items!, center)
+          : <EnhancedSearchResult>[];
+
+      await session.close();
+      _activeBusinessSearchSession = null;
+
+      return items;
+    } catch (e) {
+      debugPrint('❌ BIZ search error: $e');
+      return [];
+    }
+  }
+
+  List<EnhancedSearchResult> _processSearchResults(
+    List items,
+    Point center,
+  ) {
+    final results = <EnhancedSearchResult>[];
+
+    for (final item in items) {
+      Point? point;
+
+      if (item.geometry.isNotEmpty) {
+        final geometry = item.geometry.first;
+        if (geometry.point != null) {
+          point = geometry.point!;
+        } else if (geometry.boundingBox != null) {
+          final box = geometry.boundingBox!;
+          point = Point(
+            latitude: (box.northEast.latitude + box.southWest.latitude) / 2,
+            longitude: (box.northEast.longitude + box.southWest.longitude) / 2,
+          );
+        }
+      }
+
+      if (point == null) continue;
+
+      final title = item.name;
+      if (title.isEmpty || _isCoordinateString(title)) continue;
+
+      final distance = _calculateDistanceInMeters(point, center);
+      final category = _detectCategory(title);
+
+      results.add(EnhancedSearchResult(
+        title: title,
+        distance: distance,
+        point: point,
+        category: category,
+      ));
+    }
+
+    return results;
+  }
+
+  List<EnhancedSearchResult> _deduplicateResults(
+    List<EnhancedSearchResult> results,
+  ) {
+    final unique = <EnhancedSearchResult>[];
+
+    for (final result in results) {
+      final isDuplicate = unique.any((existing) {
+        final distance = Geolocator.distanceBetween(
+          existing.point.latitude,
+          existing.point.longitude,
+          result.point.latitude,
+          result.point.longitude,
+        );
+        return distance < 50; // Within 50 meters
+      });
+
+      if (!isDuplicate) {
+        unique.add(result);
+      }
+    }
+
+    return unique;
+  }
+
+  LocationCategory _detectCategory(String title) {
+    final lowerTitle = title.toLowerCase();
+
+    // Home-related keywords
+    if (lowerTitle.contains('home') ||
+        lowerTitle.contains('house') ||
+        lowerTitle.contains('apartment') ||
+        lowerTitle.contains('residence')) {
+      return LocationCategory.home;
+    }
+
+    // Business-related keywords
+    if (lowerTitle.contains('store') ||
+        lowerTitle.contains('shop') ||
+        lowerTitle.contains('restaurant') ||
+        lowerTitle.contains('cafe') ||
+        lowerTitle.contains('market') ||
+        lowerTitle.contains('mall') ||
+        lowerTitle.contains('butchery') ||
+        lowerTitle.contains('bakery')) {
+      return LocationCategory.business;
+    }
+
+    // Landmark-related keywords
+    if (lowerTitle.contains('park') ||
+        lowerTitle.contains('square') ||
+        lowerTitle.contains('monument') ||
+        lowerTitle.contains('stadium') ||
+        lowerTitle.contains('theater')) {
+      return LocationCategory.landmark;
+    }
+
+    // Building-related keywords
+    if (lowerTitle.contains('building') ||
+        lowerTitle.contains('tower') ||
+        lowerTitle.contains('complex')) {
+      return LocationCategory.building;
+    }
+
+    // Street-related keywords
+    if (lowerTitle.contains('street') ||
+        lowerTitle.contains('avenue') ||
+        lowerTitle.contains('road') ||
+        lowerTitle.contains('boulevard')) {
+      return LocationCategory.street;
+    }
+
+    return LocationCategory.generic;
+  }
+
+  double _calculateDistanceInMeters(Point point, Point center) {
+    return Geolocator.distanceBetween(
+      center.latitude,
+      center.longitude,
+      point.latitude,
+      point.longitude,
+    );
+  }
+
+  Future<void> _selectSearchResult(EnhancedSearchResult item) async {
     searchController.clear();
     searchFocusNode.unfocus();
 
     if (!mounted) return;
 
+    final distanceText = item.distance < 1000
+        ? '${item.distance.toStringAsFixed(0)}m away'
+        : '${(item.distance / 1000).toStringAsFixed(1)}km away';
+
     setState(() {
       searchResults = [];
       selectedPoint = item.point;
       selectedAddress = item.title;
-      addressDetails = item.subtitle;
+      addressDetails = distanceText;
     });
     isSearching.value = false;
 
@@ -392,23 +581,12 @@ class _CustomerCurrentLocationDeterminerState
       return;
     }
 
-    if (selectedAddress.isEmpty) {
+    if (selectedAddress.isEmpty ||
+        selectedAddress == 'Selected location on map') {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: const Text('Please wait while we determine the address'),
+          content: const Text('Please use search to specify your address'),
           backgroundColor: Theme.of(context).colorScheme.error,
-        ),
-      );
-      return;
-    }
-
-    if (_isCoordinateString(selectedAddress)) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: const Text(
-              'Could not determine address. Please search for a nearby location'),
-          backgroundColor: Theme.of(context).colorScheme.error,
-          duration: const Duration(seconds: 3),
         ),
       );
       return;
@@ -503,7 +681,7 @@ class _CustomerCurrentLocationDeterminerState
                   isSearchingNotifier: isSearching,
                 ),
                 if (searchResults.isNotEmpty)
-                  SearchResultsList(
+                  EnhancedSearchResultsList(
                     results: searchResults,
                     onSelect: _selectSearchResult,
                   ),
@@ -532,16 +710,25 @@ class _CustomerCurrentLocationDeterminerState
   }
 }
 
-class SearchResultItem {
+class EnhancedSearchResult {
   final String title;
-  final String subtitle;
+  final double distance;
   final Point point;
+  final LocationCategory category;
 
-  const SearchResultItem({
+  const EnhancedSearchResult({
     required this.title,
-    required this.subtitle,
+    required this.distance,
     required this.point,
+    required this.category,
   });
+
+  String get distanceText {
+    if (distance < 1000) {
+      return '${distance.toStringAsFixed(0)}m away';
+    }
+    return '${(distance / 1000).toStringAsFixed(1)}km away';
+  }
 }
 
 class MapCenterCrosshair extends StatelessWidget {
@@ -634,7 +821,7 @@ class LocationSearchBar extends StatelessWidget {
         onChanged: onChanged,
         style: TextStyle(fontSize: 14.sp, color: colorScheme.onSurface),
         decoration: InputDecoration(
-          hintText: 'Search city, street, building...',
+          hintText: 'Search address, building, store...',
           hintStyle: TextStyle(
             fontSize: 14.sp,
             color: colorScheme.onSurface.withValues(alpha: 0.5),
@@ -687,11 +874,11 @@ class LocationSearchBar extends StatelessWidget {
   }
 }
 
-class SearchResultsList extends StatelessWidget {
-  final List<SearchResultItem> results;
-  final ValueChanged<SearchResultItem> onSelect;
+class EnhancedSearchResultsList extends StatelessWidget {
+  final List<EnhancedSearchResult> results;
+  final ValueChanged<EnhancedSearchResult> onSelect;
 
-  const SearchResultsList({
+  const EnhancedSearchResultsList({
     super.key,
     required this.results,
     required this.onSelect,
@@ -726,7 +913,7 @@ class SearchResultsList extends StatelessWidget {
         ),
         itemBuilder: (context, index) {
           final result = results[index];
-          return SearchResultTile(
+          return EnhancedSearchResultTile(
             result: result,
             onTap: () => onSelect(result),
           );
@@ -736,11 +923,11 @@ class SearchResultsList extends StatelessWidget {
   }
 }
 
-class SearchResultTile extends StatelessWidget {
-  final SearchResultItem result;
+class EnhancedSearchResultTile extends StatelessWidget {
+  final EnhancedSearchResult result;
   final VoidCallback onTap;
 
-  const SearchResultTile({
+  const EnhancedSearchResultTile({
     super.key,
     required this.result,
     required this.onTap,
@@ -758,7 +945,7 @@ class SearchResultTile extends StatelessWidget {
           borderRadius: BorderRadius.circular(8.r),
         ),
         child: Icon(
-          Icons.location_on,
+          result.category.icon,
           color: colorScheme.primary,
           size: 18.sp,
         ),
@@ -774,7 +961,7 @@ class SearchResultTile extends StatelessWidget {
         overflow: TextOverflow.ellipsis,
       ),
       subtitle: Text(
-        result.subtitle,
+        result.distanceText,
         style: TextStyle(
           fontSize: 12.sp,
           fontWeight: FontWeight.w400,

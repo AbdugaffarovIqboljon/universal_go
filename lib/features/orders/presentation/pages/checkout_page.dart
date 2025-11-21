@@ -616,7 +616,7 @@ class ReceiptCard extends StatelessWidget {
                       disabledBackgroundColor:
                           theme.colorScheme.onSurface.withValues(alpha: 0.12),
                       shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(14.r),
+                        borderRadius: BorderRadius.circular(10.r),
                       ),
                       elevation: 0,
                     ),

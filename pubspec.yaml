@@ -11,6 +11,11 @@ dependencies:
   flutter:
     sdk: flutter
 
+  yandex_mapkit:
+    git:
+      url: https://github.com/Unact/yandex_mapkit.git
+      ref: master
+
   # UI & Icons
   cupertino_icons: ^1.0.8
   
@@ -32,7 +37,6 @@ dependencies:
   firebase_messaging: ^16.0.3
   
   # Maps
-  yandex_mapkit: ^4.2.1
   geolocator: ^14.0.2
   geocoding: ^4.0.0
   

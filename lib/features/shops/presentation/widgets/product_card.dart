@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:universal_go/features/shops/data/models/product_model.dart';
 
 class ProductCard extends StatelessWidget {
@@ -30,20 +31,62 @@ class ProductCard extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           // Product Image - Bigger
-          Container(
-            height: 140.h,
-            decoration: BoxDecoration(
-              color: Theme.of(context).colorScheme.surfaceVariant,
-              borderRadius: BorderRadius.vertical(
-                top: Radius.circular(12.r),
-              ),
+          ClipRRect(
+            borderRadius: BorderRadius.vertical(
+              top: Radius.circular(12.r),
             ),
-            child: Center(
-              child: Icon(
-                Icons.shopping_cart_outlined,
-                size: 50.sp,
-                color: Theme.of(context).colorScheme.onSurface.withOpacity(0.3),
-              ),
+            child: Container(
+              height: 140.h,
+              width: double.infinity,
+              color: Theme.of(context).colorScheme.surfaceVariant,
+              child: product.image != null && product.image!.isNotEmpty
+                  ? CachedNetworkImage(
+                      imageUrl: product.image!,
+                      fit: BoxFit.cover,
+                      memCacheWidth: 300,
+                      memCacheHeight: 300,
+                      maxHeightDiskCache: 300,
+                      maxWidthDiskCache: 300,
+                      placeholder: (context, url) => Container(
+                        color: Theme.of(context).colorScheme.surfaceVariant,
+                        child: Center(
+                          child: CircularProgressIndicator.adaptive(
+                            strokeWidth: 2,
+                            valueColor: AlwaysStoppedAnimation<Color>(
+                              Theme.of(context).colorScheme.primary,
+                            ),
+                          ),
+                        ),
+                      ),
+                      errorWidget: (context, url, error) => Container(
+                        color: Theme.of(context).colorScheme.surfaceVariant,
+                        child: Center(
+                          child: Icon(
+                            Icons.image_not_supported_outlined,
+                            size: 40.sp,
+                            color: Theme.of(context)
+                                .colorScheme
+                                .onSurface
+                                .withOpacity(0.3),
+                          ),
+                        ),
+                      ),
+                      fadeInDuration: const Duration(milliseconds: 200),
+                      fadeOutDuration: const Duration(milliseconds: 100),
+                    )
+                  : Container(
+                      color: Theme.of(context).colorScheme.surfaceVariant,
+                      child: Center(
+                        child: Icon(
+                          Icons.shopping_cart_outlined,
+                          size: 50.sp,
+                          color: Theme.of(context)
+                              .colorScheme
+                              .onSurface
+                              .withOpacity(0.3),
+                        ),
+                      ),
+                    ),
             ),
           ),
 

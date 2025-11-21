@@ -4,45 +4,54 @@ import 'package:shared_preferences/shared_preferences.dart';
 class ThemeService {
   static const String _themeKey = 'theme_mode';
   
-  /// Get the saved theme mode from SharedPreferences
-  static Future<ThemeMode> getThemeMode() async {
+  /// Get saved theme mode, fallback to defaultMode if not found
+  static Future<ThemeMode> getThemeMode({ThemeMode defaultMode = ThemeMode.light}) async {
     final prefs = await SharedPreferences.getInstance();
-    final themeIndex = prefs.getInt(_themeKey);
+    final themeModeString = prefs.getString(_themeKey);
     
-    if (themeIndex == null) {
-      return ThemeMode.system; // Default to system theme
+    if (themeModeString == null) {
+      return defaultMode;
     }
     
-    return ThemeMode.values[themeIndex];
+    switch (themeModeString) {
+      case 'light':
+        return ThemeMode.light;
+      case 'dark':
+        return ThemeMode.dark;
+      case 'system':
+        return ThemeMode.system;
+      default:
+        return defaultMode;
+    }
   }
   
-  /// Save the theme mode to SharedPreferences
+  /// Save theme mode to SharedPreferences
   static Future<void> setThemeMode(ThemeMode themeMode) async {
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setInt(_themeKey, themeMode.index);
+    await prefs.setString(_themeKey, getThemeModeString(themeMode));
   }
   
-  /// Get theme mode as string for display
+  /// Convert ThemeMode to string
   static String getThemeModeString(ThemeMode themeMode) {
     switch (themeMode) {
       case ThemeMode.light:
-        return 'Light';
+        return 'light';
       case ThemeMode.dark:
-        return 'Dark';
+        return 'dark';
       case ThemeMode.system:
-        return 'System';
+        return 'system';
     }
   }
   
-  /// Get theme mode description
+  /// Get user-friendly description
   static String getThemeModeDescription(ThemeMode themeMode) {
     switch (themeMode) {
       case ThemeMode.light:
-        return 'Always use light theme';
+        return 'Light Mode';
       case ThemeMode.dark:
-        return 'Always use dark theme';
+        return 'Dark Mode';
       case ThemeMode.system:
-        return 'Follow system setting';
+        return 'System Default';
     }
   }
 }

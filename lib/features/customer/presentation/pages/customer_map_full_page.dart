@@ -13,13 +13,66 @@ import 'package:universal_go/shared/widgets/current_location_fab.dart';
 import 'package:universal_go/shared/widgets/gradient_app_bar.dart';
 import 'package:yandex_mapkit/yandex_mapkit.dart';
 
-class MapFullScreenPage extends StatefulWidget {
+enum LocationCategory {
+  home,
+  business,
+  landmark,
+  street,
+  building,
+  district,
+  city,
+  generic;
+
+  IconData get icon {
+    switch (this) {
+      case LocationCategory.home:
+        return Icons.home;
+      case LocationCategory.business:
+        return Icons.store;
+      case LocationCategory.landmark:
+        return Icons.location_city;
+      case LocationCategory.street:
+        return Icons.route;
+      case LocationCategory.building:
+        return Icons.apartment;
+      case LocationCategory.district:
+        return Icons.map;
+      case LocationCategory.city:
+        return Icons.location_city;
+      case LocationCategory.generic:
+        return Icons.place;
+    }
+  }
+
+  String get label {
+    switch (this) {
+      case LocationCategory.home:
+        return 'Home';
+      case LocationCategory.business:
+        return 'Business';
+      case LocationCategory.landmark:
+        return 'Landmark';
+      case LocationCategory.street:
+        return 'Street';
+      case LocationCategory.building:
+        return 'Building';
+      case LocationCategory.district:
+        return 'District';
+      case LocationCategory.city:
+        return 'City';
+      case LocationCategory.generic:
+        return 'Location';
+    }
+  }
+}
+
+class CustomerMapFullPage extends StatefulWidget {
   final List<StoreModel> stores;
   final Map<String, String> storeDeals;
   final Position? userPosition;
   final Function(StoreModel) onStoreSelected;
 
-  const MapFullScreenPage({
+  const CustomerMapFullPage({
     required this.stores,
     required this.storeDeals,
     this.userPosition,
@@ -28,20 +81,18 @@ class MapFullScreenPage extends StatefulWidget {
   });
 
   @override
-  State<MapFullScreenPage> createState() => _MapFullScreenPageState();
+  State<CustomerMapFullPage> createState() => _CustomerMapFullPageState();
 }
 
-class _MapFullScreenPageState extends State<MapFullScreenPage> {
+class _CustomerMapFullPageState extends State<CustomerMapFullPage> {
   YandexMapController? _mapController;
   bool _isDisposed = false;
 
-  // Clustering
   final _clusteringService = MapClusteringService();
   List<StoreCluster> _currentClusters = [];
   final Map<int, Uint8List> _clusterMarkerCache = {};
   final Set<int> _generatingMarkers = {};
 
-  // Core state
   final ValueNotifier<List<PlacemarkMapObject>> _placemarks =
       ValueNotifier<List<PlacemarkMapObject>>([]);
   final ValueNotifier<bool> _isLoadingLocation = ValueNotifier<bool>(false);
@@ -51,7 +102,6 @@ class _MapFullScreenPageState extends State<MapFullScreenPage> {
       ValueNotifier<StoreModel?>(null);
   final ValueNotifier<double> _currentZoom = ValueNotifier<double>(11.5);
 
-  // Search state
   final ValueNotifier<String> _searchQuery = ValueNotifier<String>('');
   final ValueNotifier<List<SearchResult>> _searchResults =
       ValueNotifier<List<SearchResult>>([]);
@@ -65,6 +115,7 @@ class _MapFullScreenPageState extends State<MapFullScreenPage> {
   double _lastProcessedZoom = 11.5;
 
   SearchSession? _activeSearchSession;
+  SearchSession? _activeBusinessSearchSession;
   bool _searchAvailable = true;
 
   @override
@@ -205,6 +256,7 @@ class _MapFullScreenPageState extends State<MapFullScreenPage> {
     _searchFocusNode.dispose();
     _debounceTimer?.cancel();
     _activeSearchSession?.close();
+    _activeBusinessSearchSession?.close();
     _mapController?.dispose();
     MapClusteringHelper.clearCache();
     super.dispose();
@@ -213,6 +265,18 @@ class _MapFullScreenPageState extends State<MapFullScreenPage> {
   void _onMapCreated(YandexMapController controller) {
     if (_isDisposed) return;
     _mapController = controller;
+
+    // Set initial view to Tashkent city
+    controller.moveCamera(
+      CameraUpdate.newCameraPosition(
+        const CameraPosition(
+          target:
+              Point(latitude: 41.2995, longitude: 69.2401), // Tashkent center
+          zoom: 11.5, // City-level view
+        ),
+      ),
+    );
+
     _addShopMarkers();
   }
 
@@ -358,17 +422,20 @@ class _MapFullScreenPageState extends State<MapFullScreenPage> {
     if (_isDisposed || !mounted) return;
 
     _selectedStore.value = store;
+    _removeSearchMarker();
 
-    // Refresh markers to show active state
     _addShopMarkers();
 
     if (_mapController != null && !_isDisposed && mounted) {
-      final offsetLatitude = store.latitude + 0.0005;
+      const standardZoom = 17.5; // Same zoom as search results
+      final offsetLatitude =
+          store.latitude + 0.00035; // Smaller offset for closer zoom
+
       _mapController!.moveCamera(
         CameraUpdate.newCameraPosition(
           CameraPosition(
             target: Point(latitude: offsetLatitude, longitude: store.longitude),
-            zoom: 16.5,
+            zoom: standardZoom,
           ),
         ),
         animation:
@@ -523,12 +590,12 @@ class _MapFullScreenPageState extends State<MapFullScreenPage> {
     _searchQuery.value = '';
     _searchResults.value = [];
     _searchFocusNode.unfocus();
-    _removeSearchMarker();
   }
 
   void _clearSearchAndSelection() {
     _clearSearch();
     _clearSelectedStore();
+    _removeSearchMarker();
   }
 
   void _onSearchChanged() {
@@ -551,19 +618,29 @@ class _MapFullScreenPageState extends State<MapFullScreenPage> {
     _isSearching.value = true;
 
     _debounceTimer = Timer(const Duration(milliseconds: 500), () {
-      _performSearch(query);
+      _performEnhancedSearch(query);
     });
   }
 
   void _searchStoresOnly(String query) {
     final results = <SearchResult>[];
     final lowerQuery = query.toLowerCase();
+    final userPos = _userPositionNotifier.value;
 
     for (final store in widget.stores) {
       if (store.name.toLowerCase().contains(lowerQuery) ||
           store.address.toLowerCase().contains(lowerQuery) ||
           store.category.toLowerCase().contains(lowerQuery)) {
-        results.add(SearchResult.fromStore(store));
+        final distance = userPos != null
+            ? Geolocator.distanceBetween(
+                userPos.latitude,
+                userPos.longitude,
+                store.latitude,
+                store.longitude,
+              )
+            : null;
+
+        results.add(SearchResult.fromStore(store, distanceInMeters: distance));
       }
     }
 
@@ -572,38 +649,94 @@ class _MapFullScreenPageState extends State<MapFullScreenPage> {
     }
   }
 
-  Future<void> _performSearch(String query) async {
-    if (_isDisposed || !_searchAvailable) return;
+  Future<void> _performEnhancedSearch(String query) async {
+    if (_isDisposed) return;
 
-    final results = <SearchResult>[];
-    final lowerQuery = query.toLowerCase();
-
-    for (final store in widget.stores) {
-      if (store.name.toLowerCase().contains(lowerQuery) ||
-          store.address.toLowerCase().contains(lowerQuery) ||
-          store.category.toLowerCase().contains(lowerQuery)) {
-        results.add(SearchResult.fromStore(store));
-      }
-    }
-
-    if (results.isNotEmpty && !_isDisposed) {
-      _searchResults.value = List.from(results);
-    }
+    debugPrint('🔎 Enhanced search for: $query');
 
     try {
-      final geocodeResults = await _searchLocations(query);
-      results.addAll(geocodeResults);
+      final storeResults = <SearchResult>[];
+      final lowerQuery = query.toLowerCase();
+      final userPos = _userPositionNotifier.value;
+
+      for (final store in widget.stores) {
+        if (store.name.toLowerCase().contains(lowerQuery) ||
+            store.address.toLowerCase().contains(lowerQuery) ||
+            store.category.toLowerCase().contains(lowerQuery)) {
+          final distance = userPos != null
+              ? Geolocator.distanceBetween(
+                  userPos.latitude,
+                  userPos.longitude,
+                  store.latitude,
+                  store.longitude,
+                )
+              : null;
+
+          storeResults.add(SearchResult.fromStore(
+            store,
+            distanceInMeters: distance,
+          ));
+        }
+      }
+
+      if (storeResults.isNotEmpty && !_isDisposed) {
+        _searchResults.value = List.from(storeResults);
+      }
+
+      await _activeSearchSession?.close();
+      await _activeBusinessSearchSession?.close();
+
+      final searchCenter = userPos != null
+          ? Point(latitude: userPos.latitude, longitude: userPos.longitude)
+          : const Point(latitude: 41.2995, longitude: 69.2401);
+
+      final geoFuture = _searchGeo(query, searchCenter);
+      final bizFuture = _searchBusiness(query, searchCenter);
+
+      final results = await Future.wait([geoFuture, bizFuture]);
+      final geoResults = results[0];
+      final bizResults = results[1];
+
+      final allLocationResults = <SearchResult>[
+        ...geoResults,
+        ...bizResults,
+      ];
+
+      final uniqueLocationResults = _deduplicateLocationResults(
+        allLocationResults,
+      );
+
+      uniqueLocationResults.sort((a, b) {
+        final aExact = a.title.toLowerCase().contains(lowerQuery);
+        final bExact = b.title.toLowerCase().contains(lowerQuery);
+
+        if (aExact && !bExact) return -1;
+        if (!aExact && bExact) return 1;
+
+        if (a.distanceInMeters != null && b.distanceInMeters != null) {
+          return a.distanceInMeters!.compareTo(b.distanceInMeters!);
+        }
+
+        return 0;
+      });
+
+      final finalResults = <SearchResult>[
+        ...storeResults,
+        ...uniqueLocationResults,
+      ];
+
+      debugPrint('✅ Total results: ${finalResults.length} '
+          '(${storeResults.length} stores, ${uniqueLocationResults.length} locations)');
 
       if (!_isDisposed) {
-        _searchResults.value = results;
+        _searchResults.value = finalResults;
         _isSearching.value = false;
       }
     } catch (e) {
-      debugPrint('❌ Location search error: $e');
+      debugPrint('❌ Enhanced search error: $e');
 
       if (e.toString().contains('MissingPluginException')) {
         _searchAvailable = false;
-        debugPrint('⚠️ Yandex Search not available on this platform');
       }
 
       if (!_isDisposed) {
@@ -612,25 +745,14 @@ class _MapFullScreenPageState extends State<MapFullScreenPage> {
     }
   }
 
-  Future<List<SearchResult>> _searchLocations(String query) async {
-    if (_isDisposed) return [];
-
+  Future<List<SearchResult>> _searchGeo(String query, Point center) async {
     try {
-      await _activeSearchSession?.close();
-
-      final searchCenter = _userPositionNotifier.value != null
-          ? Point(
-              latitude: _userPositionNotifier.value!.latitude,
-              longitude: _userPositionNotifier.value!.longitude,
-            )
-          : const Point(latitude: 41.2995, longitude: 69.2401);
-
       final resultWithSession = await YandexSearch.searchByText(
         searchText: query,
-        geometry: Geometry.fromPoint(searchCenter),
+        geometry: Geometry.fromPoint(center),
         searchOptions: const SearchOptions(
           searchType: SearchType.geo,
-          resultPageSize: 15,
+          resultPageSize: 20,
           geometry: true,
         ),
       );
@@ -639,85 +761,194 @@ class _MapFullScreenPageState extends State<MapFullScreenPage> {
       final resultFuture = resultWithSession.$2;
 
       _activeSearchSession = session;
-
       final result = await resultFuture;
 
-      debugPrint('📋 Location search results: ${result.items?.length ?? 0}');
+      debugPrint('📍 GEO results: ${result.items?.length ?? 0}');
 
-      final locationResults = <SearchResult>[];
-
-      if (result.items != null && result.items!.isNotEmpty) {
-        for (final item in result.items!) {
-          Point? point;
-
-          if (item.geometry.isNotEmpty) {
-            final geometry = item.geometry.first;
-            if (geometry.point != null) {
-              point = geometry.point!;
-            } else if (geometry.boundingBox != null) {
-              final box = geometry.boundingBox!;
-              point = Point(
-                latitude: (box.northEast.latitude + box.southWest.latitude) / 2,
-                longitude:
-                    (box.northEast.longitude + box.southWest.longitude) / 2,
-              );
-            }
-          }
-
-          if (point == null) continue;
-
-          final title = item.name;
-          if (title.isEmpty || _isCoordinateString(title)) continue;
-
-          final kind = _determineLocationKind(title);
-
-          locationResults.add(SearchResult.fromLocation(
-            address: title,
-            point: point,
-            kind: kind,
-          ));
-        }
-      }
+      final items = result.items != null
+          ? _processSearchResults(result.items!, center)
+          : <SearchResult>[];
 
       await session.close();
       _activeSearchSession = null;
 
-      return locationResults;
+      return items;
     } catch (e) {
-      debugPrint('❌ Yandex search error: $e');
+      debugPrint('❌ GEO search error: $e');
       return [];
     }
   }
 
-  String _determineLocationKind(String title) {
+  Future<List<SearchResult>> _searchBusiness(String query, Point center) async {
+    try {
+      final resultWithSession = await YandexSearch.searchByText(
+        searchText: query,
+        geometry: Geometry.fromPoint(center),
+        searchOptions: const SearchOptions(
+          searchType: SearchType.biz,
+          resultPageSize: 20,
+          geometry: true,
+        ),
+      );
+
+      final session = resultWithSession.$1;
+      final resultFuture = resultWithSession.$2;
+
+      _activeBusinessSearchSession = session;
+      final result = await resultFuture;
+
+      debugPrint('🏪 BIZ results: ${result.items?.length ?? 0}');
+
+      final items = result.items != null
+          ? _processSearchResults(result.items!, center)
+          : <SearchResult>[];
+
+      await session.close();
+      _activeBusinessSearchSession = null;
+
+      return items;
+    } catch (e) {
+      debugPrint('❌ BIZ search error: $e');
+      return [];
+    }
+  }
+
+  List<SearchResult> _processSearchResults(List items, Point center) {
+    final results = <SearchResult>[];
+    final userPos = _userPositionNotifier.value;
+
+    for (final item in items) {
+      Point? point;
+
+      if (item.geometry.isNotEmpty) {
+        final geometry = item.geometry.first;
+        if (geometry.point != null) {
+          point = geometry.point!;
+        } else if (geometry.boundingBox != null) {
+          final box = geometry.boundingBox!;
+          point = Point(
+            latitude: (box.northEast.latitude + box.southWest.latitude) / 2,
+            longitude: (box.northEast.longitude + box.southWest.longitude) / 2,
+          );
+        }
+      }
+
+      if (point == null) continue;
+
+      final title = item.name;
+      if (title.isEmpty || _isCoordinateString(title)) continue;
+
+      final category = _detectCategory(title);
+
+      final distance = userPos != null
+          ? Geolocator.distanceBetween(
+              userPos.latitude,
+              userPos.longitude,
+              point.latitude,
+              point.longitude,
+            )
+          : null;
+
+      results.add(SearchResult.fromLocation(
+        address: title,
+        point: point,
+        category: category,
+        distanceInMeters: distance,
+      ));
+    }
+
+    return results;
+  }
+
+  List<SearchResult> _deduplicateLocationResults(
+    List<SearchResult> results,
+  ) {
+    final unique = <SearchResult>[];
+
+    for (final result in results) {
+      final isDuplicate = unique.any((existing) {
+        if (existing.type != SearchResultType.location ||
+            result.type != SearchResultType.location) {
+          return false;
+        }
+
+        final distance = Geolocator.distanceBetween(
+          existing.point.latitude,
+          existing.point.longitude,
+          result.point.latitude,
+          result.point.longitude,
+        );
+        return distance < 50;
+      });
+
+      if (!isDuplicate) {
+        unique.add(result);
+      }
+    }
+
+    return unique;
+  }
+
+  LocationCategory _detectCategory(String title) {
     final lowerTitle = title.toLowerCase();
+
+    if (lowerTitle.contains('home') ||
+        lowerTitle.contains('house') ||
+        lowerTitle.contains('apartment') ||
+        lowerTitle.contains('residence')) {
+      return LocationCategory.home;
+    }
+
+    if (lowerTitle.contains('store') ||
+        lowerTitle.contains('shop') ||
+        lowerTitle.contains('restaurant') ||
+        lowerTitle.contains('cafe') ||
+        lowerTitle.contains('market') ||
+        lowerTitle.contains('mall') ||
+        lowerTitle.contains('butchery') ||
+        lowerTitle.contains('bakery') ||
+        lowerTitle.contains('bank') ||
+        lowerTitle.contains('pharmacy')) {
+      return LocationCategory.business;
+    }
+
+    if (lowerTitle.contains('park') ||
+        lowerTitle.contains('square') ||
+        lowerTitle.contains('monument') ||
+        lowerTitle.contains('stadium') ||
+        lowerTitle.contains('theater')) {
+      return LocationCategory.landmark;
+    }
+
+    if (lowerTitle.contains('building') ||
+        lowerTitle.contains('tower') ||
+        lowerTitle.contains('complex')) {
+      return LocationCategory.building;
+    }
+
+    if (lowerTitle.contains('district') ||
+        lowerTitle.contains('tuman') ||
+        lowerTitle.contains('mahalla')) {
+      return LocationCategory.district;
+    }
 
     if (lowerTitle.contains('street') ||
         lowerTitle.contains('avenue') ||
         lowerTitle.contains('road') ||
+        lowerTitle.contains('boulevard') ||
         lowerTitle.contains('ko\'cha') ||
         lowerTitle.contains('koʻcha')) {
-      return 'street';
+      return LocationCategory.street;
     }
 
-    if (lowerTitle.contains('district') || lowerTitle.contains('tuman')) {
-      return 'district';
+    if (lowerTitle.contains('city') ||
+        lowerTitle.contains('shahar') ||
+        lowerTitle.contains('tashkent') ||
+        lowerTitle.contains('samarkand')) {
+      return LocationCategory.city;
     }
 
-    if (lowerTitle.contains('city') || lowerTitle.contains('shahar')) {
-      return 'city';
-    }
-
-    if (lowerTitle.contains('region') || lowerTitle.contains('viloyat')) {
-      return 'region';
-    }
-
-    if (lowerTitle.contains('uzbekistan') ||
-        lowerTitle.contains('o\'zbekiston')) {
-      return 'country';
-    }
-
-    return 'location';
+    return LocationCategory.generic;
   }
 
   bool _isCoordinateString(String text) {
@@ -728,17 +959,19 @@ class _MapFullScreenPageState extends State<MapFullScreenPage> {
   void _onSearchResultTap(SearchResult result) {
     if (_isDisposed || !mounted || _mapController == null) return;
 
+    const standardZoom = 17.5;
+
     try {
       _mapController!.moveCamera(
         CameraUpdate.newCameraPosition(
           CameraPosition(
             target: result.point,
-            zoom: _getZoomForResultType(result),
+            zoom: standardZoom,
           ),
         ),
         animation: const MapAnimation(
           type: MapAnimationType.smooth,
-          duration: 1.0,
+          duration: 0.8,
         ),
       );
     } catch (e) {
@@ -747,32 +980,14 @@ class _MapFullScreenPageState extends State<MapFullScreenPage> {
 
     if (result.type == SearchResultType.store && result.store != null) {
       _selectedStore.value = result.store;
+      _removeSearchMarker();
+      _addShopMarkers(); // Need to rebuild markers
     } else {
+      _selectedStore.value = null;
       _addSearchMarker(result);
     }
 
     _clearSearch();
-  }
-
-  double _getZoomForResultType(SearchResult result) {
-    if (result.type == SearchResultType.store) {
-      return 16.5;
-    }
-
-    switch (result.kind) {
-      case 'street':
-        return 15;
-      case 'district':
-        return 13;
-      case 'city':
-        return 11;
-      case 'region':
-        return 9;
-      case 'country':
-        return 6;
-      default:
-        return 13;
-    }
   }
 
   void _addSearchMarker(SearchResult result) {
@@ -783,16 +998,16 @@ class _MapFullScreenPageState extends State<MapFullScreenPage> {
       icon: PlacemarkIcon.single(
         PlacemarkIconStyle(
           image: BitmapDescriptor.fromAssetImage(
-            'assets/icons/ic_user_location.png',
+            'assets/icons/ic_active_marker.png',
           ),
-          scale: 0.28,
+          scale: 0.3, // Slightly larger for better visibility
           anchor: const Offset(0.5, 1.0),
           rotationType: RotationType.noRotation,
         ),
       ),
     );
 
-    _addShopMarkers();
+    _addShopMarkers(); // This will trigger a rebuild with the new marker
   }
 
   void _removeSearchMarker() {
@@ -804,6 +1019,8 @@ class _MapFullScreenPageState extends State<MapFullScreenPage> {
 
   @override
   Widget build(BuildContext context) {
+    final topPadding = MediaQuery.of(context).padding.top;
+
     return Scaffold(
       backgroundColor: Colors.white,
       body: GestureDetector(
@@ -821,9 +1038,13 @@ class _MapFullScreenPageState extends State<MapFullScreenPage> {
                     onCameraPositionChanged:
                         (cameraPosition, reason, finished) {
                       _onZoomChanged(cameraPosition.zoom);
-                      if (reason == CameraUpdateReason.gestures &&
-                          _selectedStore.value != null) {
-                        _clearSelectedStore();
+                      if (reason == CameraUpdateReason.gestures) {
+                        if (_selectedStore.value != null) {
+                          _clearSelectedStore();
+                        }
+                        if (_searchMarker != null) {
+                          _removeSearchMarker();
+                        }
                       }
                     },
                   );
@@ -840,37 +1061,36 @@ class _MapFullScreenPageState extends State<MapFullScreenPage> {
                 subtitle: "discover stores near you",
               ),
             ),
-            SafeArea(
-              child: Padding(
-                padding: EdgeInsets.symmetric(
-                  horizontal: 16.w,
-                  vertical: MediaQuery.of(context).padding.top + 24.h,
-                ),
-                child: Column(
-                  children: [
-                    MapSearchBar(
-                      controller: _searchController,
-                      focusNode: _searchFocusNode,
-                      onClear: _clearSearch,
-                      onBack: () => Navigator.pop(context),
-                      isSearchAvailable: _searchAvailable,
-                    ),
-                    SizedBox(height: 12.h),
-                    ValueListenableBuilder<String>(
-                      valueListenable: _searchQuery,
-                      builder: (context, query, _) {
-                        if (query.isEmpty) return const SizedBox.shrink();
+            Positioned(
+              top: topPadding + 96.h,
+              left: 16.w,
+              right: 16.w,
+              child: Column(
+                children: [
+                  MapSearchBar(
+                    controller: _searchController,
+                    focusNode: _searchFocusNode,
+                    onClear: _clearSearch,
+                    onBack: () => Navigator.pop(context),
+                    isSearchAvailable: _searchAvailable,
+                  ),
+                  ValueListenableBuilder<String>(
+                    valueListenable: _searchQuery,
+                    builder: (context, query, _) {
+                      if (query.isEmpty) return const SizedBox.shrink();
 
-                        return SearchResultsOverlay(
+                      return Padding(
+                        padding: EdgeInsets.only(top: 12.h),
+                        child: SearchResultsOverlay(
                           searchQueryNotifier: _searchQuery,
                           searchResultsNotifier: _searchResults,
                           isSearchingNotifier: _isSearching,
                           onResultTap: _onSearchResultTap,
-                        );
-                      },
-                    ),
-                  ],
-                ),
+                        ),
+                      );
+                    },
+                  ),
+                ],
               ),
             ),
             ValueListenableBuilder<StoreModel?>(
@@ -903,7 +1123,6 @@ class _MapFullScreenPageState extends State<MapFullScreenPage> {
   }
 }
 
-// Map Search Bar - Always visible with back button integrated
 class MapSearchBar extends StatelessWidget {
   final TextEditingController controller;
   final FocusNode focusNode;
@@ -925,10 +1144,10 @@ class MapSearchBar extends StatelessWidget {
     return Material(
       elevation: 4,
       shadowColor: Colors.black.withValues(alpha: 0.1),
-      borderRadius: BorderRadius.circular(16.r),
+      borderRadius: BorderRadius.circular(12.r),
       color: Colors.white,
       child: Container(
-        height: 56.h,
+        height: 52.h,
         decoration: BoxDecoration(
           color: Colors.white,
           borderRadius: BorderRadius.circular(12.r),
@@ -939,6 +1158,13 @@ class MapSearchBar extends StatelessWidget {
         ),
         child: Row(
           children: [
+            SizedBox(width: 16.w),
+            Icon(
+              Icons.search,
+              color: Colors.grey[500],
+              size: 22.sp,
+            ),
+            SizedBox(width: 12.w),
             Expanded(
               child: TextField(
                 controller: controller,
@@ -950,7 +1176,7 @@ class MapSearchBar extends StatelessWidget {
                 ),
                 decoration: InputDecoration(
                   hintText: isSearchAvailable
-                      ? 'Search stores, streets, districts...'
+                      ? 'Search stores, buildings, streets...'
                       : 'Search stores...',
                   hintStyle: TextStyle(
                     fontSize: 15.sp,
@@ -959,23 +1185,22 @@ class MapSearchBar extends StatelessWidget {
                   ),
                   border: InputBorder.none,
                   isDense: true,
-                  contentPadding: EdgeInsets.symmetric(
-                    horizontal: 4.w,
-                    vertical: 16.h,
-                  ),
+                  contentPadding: EdgeInsets.symmetric(vertical: 16.h),
                 ),
               ),
             ),
             ValueListenableBuilder<TextEditingValue>(
               valueListenable: controller,
               builder: (context, value, _) {
+                if (value.text.isEmpty) return SizedBox(width: 16.w);
+
                 return Material(
                   color: Colors.transparent,
                   child: InkWell(
                     onTap: onClear,
                     borderRadius: BorderRadius.circular(20.r),
-                    child: Container(
-                      padding: EdgeInsets.all(8.w),
+                    child: Padding(
+                      padding: EdgeInsets.all(12.w),
                       child: Icon(
                         Icons.clear,
                         color: Colors.grey[500],
@@ -993,7 +1218,6 @@ class MapSearchBar extends StatelessWidget {
   }
 }
 
-// Search Results Overlay
 class SearchResultsOverlay extends StatelessWidget {
   final ValueNotifier<String> searchQueryNotifier;
   final ValueNotifier<List<SearchResult>> searchResultsNotifier;
@@ -1013,13 +1237,13 @@ class SearchResultsOverlay extends StatelessWidget {
     return Material(
       elevation: 4,
       shadowColor: Colors.black.withValues(alpha: 0.1),
-      borderRadius: BorderRadius.circular(16.r),
+      borderRadius: BorderRadius.circular(12.r),
       color: Colors.white,
       child: Container(
-        constraints: BoxConstraints(maxHeight: 420.h),
+        constraints: BoxConstraints(maxHeight: 380.h),
         decoration: BoxDecoration(
           color: Colors.white,
-          borderRadius: BorderRadius.circular(16.r),
+          borderRadius: BorderRadius.circular(12.r),
         ),
         child: ValueListenableBuilder<bool>(
           valueListenable: isSearchingNotifier,
@@ -1087,7 +1311,7 @@ class SearchResultsOverlay extends StatelessWidget {
                   itemCount: results.length,
                   separatorBuilder: (_, __) => Divider(
                     height: 1.h,
-                    indent: 72.w,
+                    indent: 68.w,
                     color: Colors.grey.withValues(alpha: 0.1),
                   ),
                   itemBuilder: (context, index) {
@@ -1107,7 +1331,6 @@ class SearchResultsOverlay extends StatelessWidget {
   }
 }
 
-// Search Result Item
 class SearchResultItem extends StatelessWidget {
   final SearchResult result;
   final VoidCallback onTap;
@@ -1118,21 +1341,14 @@ class SearchResultItem extends StatelessWidget {
     super.key,
   });
 
-  IconData _getIconForKind(String? kind) {
-    switch (kind) {
-      case 'street':
-        return Icons.route;
-      case 'district':
-        return Icons.map;
-      case 'city':
-        return Icons.location_city;
-      case 'region':
-        return Icons.terrain;
-      case 'country':
-        return Icons.public;
-      default:
-        return Icons.location_on;
+  String _formatDistance() {
+    if (result.distanceInMeters == null) return result.subtitle ?? '';
+
+    final meters = result.distanceInMeters!;
+    if (meters < 1000) {
+      return '${meters.toStringAsFixed(0)}m away';
     }
+    return '${(meters / 1000).toStringAsFixed(1)}km away';
   }
 
   @override
@@ -1158,7 +1374,7 @@ class SearchResultItem extends StatelessWidget {
               child: Icon(
                 result.type == SearchResultType.store
                     ? Icons.storefront
-                    : _getIconForKind(result.kind),
+                    : (result.category?.icon ?? Icons.place),
                 color: result.type == SearchResultType.store
                     ? Theme.of(context).primaryColor
                     : Colors.blue,
@@ -1180,18 +1396,58 @@ class SearchResultItem extends StatelessWidget {
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                   ),
-                  if (result.subtitle != null) ...[
-                    SizedBox(height: 3.h),
-                    Text(
-                      result.subtitle!,
-                      style: TextStyle(
-                        fontSize: 13.sp,
-                        color: Colors.grey[600],
-                      ),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                  ],
+                  SizedBox(height: 3.h),
+                  Row(
+                    children: [
+                      if (result.type == SearchResultType.store &&
+                          result.subtitle != null) ...[
+                        Expanded(
+                          child: Text(
+                            result.subtitle!,
+                            style: TextStyle(
+                              fontSize: 13.sp,
+                              color: Colors.grey[600],
+                            ),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                      ] else ...[
+                        Text(
+                          result.category?.label ?? 'Location',
+                          style: TextStyle(
+                            fontSize: 13.sp,
+                            color: Colors.grey[600],
+                          ),
+                        ),
+                        if (result.distanceInMeters != null) ...[
+                          SizedBox(width: 8.w),
+                          Text(
+                            '•',
+                            style: TextStyle(
+                              fontSize: 13.sp,
+                              color: Colors.grey[400],
+                            ),
+                          ),
+                          SizedBox(width: 8.w),
+                          Icon(
+                            Icons.navigation,
+                            size: 12.sp,
+                            color: Theme.of(context).primaryColor,
+                          ),
+                          SizedBox(width: 4.w),
+                          Text(
+                            _formatDistance(),
+                            style: TextStyle(
+                              fontSize: 13.sp,
+                              color: Theme.of(context).primaryColor,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ],
+                      ],
+                    ],
+                  ),
                 ],
               ),
             ),
@@ -1207,7 +1463,6 @@ class SearchResultItem extends StatelessWidget {
   }
 }
 
-// Search result classes
 enum SearchResultType { store, location }
 
 class SearchResult {
@@ -1217,7 +1472,8 @@ class SearchResult {
   final SearchResultType type;
   final Point point;
   final StoreModel? store;
-  final String? kind;
+  final LocationCategory? category;
+  final double? distanceInMeters;
 
   const SearchResult({
     required this.id,
@@ -1226,10 +1482,14 @@ class SearchResult {
     required this.type,
     required this.point,
     this.store,
-    this.kind,
+    this.category,
+    this.distanceInMeters,
   });
 
-  factory SearchResult.fromStore(StoreModel store) {
+  factory SearchResult.fromStore(
+    StoreModel store, {
+    double? distanceInMeters,
+  }) {
     return SearchResult(
       id: 'store_${store.id}',
       title: store.name,
@@ -1237,44 +1497,24 @@ class SearchResult {
       type: SearchResultType.store,
       point: Point(latitude: store.latitude, longitude: store.longitude),
       store: store,
+      distanceInMeters: distanceInMeters,
     );
   }
 
   factory SearchResult.fromLocation({
     required String address,
     required Point point,
-    String? kind,
+    LocationCategory? category,
+    double? distanceInMeters,
   }) {
-    String subtitle = 'Location';
-    if (kind != null) {
-      switch (kind) {
-        case 'street':
-          subtitle = 'Street';
-          break;
-        case 'district':
-          subtitle = 'District';
-          break;
-        case 'city':
-          subtitle = 'City';
-          break;
-        case 'region':
-          subtitle = 'Region';
-          break;
-        case 'country':
-          subtitle = 'Country';
-          break;
-        default:
-          subtitle = 'Location';
-      }
-    }
-
     return SearchResult(
       id: 'location_${point.latitude}_${point.longitude}',
       title: address,
-      subtitle: subtitle,
+      subtitle: category?.label ?? 'Location',
       type: SearchResultType.location,
       point: point,
-      kind: kind,
+      category: category,
+      distanceInMeters: distanceInMeters,
     );
   }
 }

@@ -3,9 +3,9 @@ import 'package:universal_go/features/customer/data/models/map_store_cluster.dar
 import 'package:universal_go/features/shops/data/models/store_model.dart';
 
 class MapClusteringHelper {
-  static const double tashkentCenterLat = 41.3111;
-  static const double tashkentCenterLon = 69.2797;
-  static const double tashkentInitialZoom = 10.8;
+  static const double tashkentCenterLat = 41.2995;
+  static const double tashkentCenterLon = 69.2401;
+  static const double tashkentInitialZoom = 11.5;
   
   // FIXED: Lower threshold - shows individual stores earlier
   static const double individualStoreThreshold = 12.5;

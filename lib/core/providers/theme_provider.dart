@@ -2,13 +2,18 @@ import 'package:flutter/material.dart';
 import 'package:universal_go/core/services/theme_service.dart';
 
 class ThemeProvider extends ChangeNotifier {
-  ThemeMode _themeMode = ThemeMode.system;
+  ThemeProvider({ThemeMode defaultThemeMode = ThemeMode.light})
+      : _themeMode = defaultThemeMode,
+        _defaultThemeMode = defaultThemeMode;
+
+  ThemeMode _themeMode;
+  final ThemeMode _defaultThemeMode;
   
   ThemeMode get themeMode => _themeMode;
   
-  /// Initialize theme from SharedPreferences
+  /// Initialize theme from SharedPreferences, fallback to default
   Future<void> initializeTheme() async {
-    _themeMode = await ThemeService.getThemeMode();
+    _themeMode = await ThemeService.getThemeMode(defaultMode: _defaultThemeMode);
     notifyListeners();
   }
   

@@ -82,7 +82,7 @@ class CartBottomBar extends StatelessWidget {
                   horizontal: 16.w,
                 ),
                 shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(16.r),
+                  borderRadius: BorderRadius.circular(10.r),
                 ),
                 elevation: 0,
               ),
