@@ -80,11 +80,9 @@ class _CustomerHomePageState extends State<CustomerHomePage>
   YandexMapController? _mapController;
   bool _isDisposed = false;
 
-  // Services
   final _clusteringService = MapClusteringService();
   StreamSubscription? _clusteringSubscription;
 
-  // Core state
   final ValueNotifier<Position?> _userPositionNotifier =
       ValueNotifier<Position?>(null);
   final ValueNotifier<List<PlacemarkMapObject>> _placemarks =
@@ -92,23 +90,24 @@ class _CustomerHomePageState extends State<CustomerHomePage>
   final ValueNotifier<bool> _isLoadingLocation = ValueNotifier<bool>(false);
   final ValueNotifier<double> _currentZoom = ValueNotifier<double>(11.5);
 
-  // Sheet animation
   late AnimationController _sheetAnimationController;
   late Animation<double> _sheetAnimation;
   final ValueNotifier<SheetState> _sheetState =
       ValueNotifier<SheetState>(SheetState.collapsed);
 
-  // Scroll tracking
   final ScrollController _scrollController = ScrollController();
   double _lastScrollOffset = 0.0;
   Timer? _scrollDebounce;
   bool _isAnimatingSheet = false;
 
-  // FIXED: Overscroll tracking for collapse gesture
+  // PROFESSIONAL: Velocity-aware overscroll with time-based gating
   double _overscrollAccumulator = 0.0;
-  static const double _collapseThreshold = 40.0;
+  DateTime? _overscrollStartTime;
+  double _lastOverscrollVelocity = 0.0;
+  static const double _collapseThreshold = 80.0; // Increased threshold
+  static const int _minOverscrollDurationMs = 150; // Minimum sustained time
+  static const double _maxCollapseVelocity = 1500.0; // Reject fast flings
 
-  // Filter state
   final ValueNotifier<StoreFilterState> _filterState =
       ValueNotifier<StoreFilterState>(
     const StoreFilterState(
@@ -121,26 +120,21 @@ class _CustomerHomePageState extends State<CustomerHomePage>
 
   final ValueNotifier<StoreModel?> _selectedStore = ValueNotifier(null);
 
-  // Cached filtered stores
   List<StoreModel> _cachedFilteredStores = [];
   StoreFilterState? _lastFilterState;
 
-  // Cluster marker cache
   final Map<int, Uint8List> _clusterMarkerCache = {};
   final Set<int> _generatingMarkers = {};
 
-  // Current clusters
   List<StoreCluster> _currentClusters = [];
 
-  // Zoom debouncing
   Timer? _zoomDebounceTimer;
   double _lastProcessedZoom = 11.5;
 
-  // Sheet sizes
   static const double _collapsedSize = 0.30;
   static const double _expandedSize = 0.75;
 
-  // Store data (keeping as is - your 25 stores)
+  // Store data
   final List<StoreModel> _stores = [
     StoreModel(
       id: '1',
@@ -657,7 +651,6 @@ class _CustomerHomePageState extends State<CustomerHomePage>
         return;
       }
 
-      // Expand when scrolling down in content
       if (delta > 0 && _sheetState.value == SheetState.collapsed) {
         if (currentOffset > 60) {
           _animateSheetTo(SheetState.expanded);
@@ -669,7 +662,6 @@ class _CustomerHomePageState extends State<CustomerHomePage>
   }
 
   void _animateSheetTo(SheetState newState, {bool force = false}) {
-    // Allow force to override animation lock
     if (!force && (_isAnimatingSheet || _sheetState.value == newState)) return;
 
     _isAnimatingSheet = true;
@@ -693,46 +685,56 @@ class _CustomerHomePageState extends State<CustomerHomePage>
     _animateSheetTo(newState);
   }
 
-  // FIXED: Handle scroll notifications for collapse gesture
+  // PROFESSIONAL: Graceful velocity-aware collapse
   bool _handleScrollNotification(ScrollNotification notification) {
     if (_isDisposed || _isAnimatingSheet) return false;
 
-    // Only handle when sheet is expanded
     if (_sheetState.value != SheetState.expanded) {
-      _overscrollAccumulator = 0.0;
+      _resetOverscrollTracking();
       return false;
     }
 
     if (notification is ScrollUpdateNotification) {
       final metrics = notification.metrics;
 
-      // Check if we're at the top (scroll position is 0 or very close)
       if (metrics.pixels <= 0) {
-        // User is trying to scroll up when already at top
         if (notification.scrollDelta != null && notification.scrollDelta! < 0) {
-          _overscrollAccumulator += notification.scrollDelta!.abs();
+          final delta = notification.scrollDelta!.abs();
 
-          // Collapse if threshold reached
-          if (_overscrollAccumulator >= _collapseThreshold) {
-            _overscrollAccumulator = 0.0;
+          _overscrollStartTime ??= DateTime.now();
+          _overscrollAccumulator += delta;
+
+          final duration = DateTime.now().difference(_overscrollStartTime!);
+          final hasMinDuration =
+              duration.inMilliseconds >= _minOverscrollDurationMs;
+
+          _lastOverscrollVelocity = delta * 16.67;
+
+          // Only collapse with: threshold + time + controlled velocity
+          if (_overscrollAccumulator >= _collapseThreshold &&
+              hasMinDuration &&
+              _lastOverscrollVelocity < _maxCollapseVelocity) {
+            _resetOverscrollTracking();
             _animateSheetTo(SheetState.collapsed);
             return true;
           }
         }
       } else {
-        // Reset accumulator if scrolled away from top
-        _overscrollAccumulator = 0.0;
+        _resetOverscrollTracking();
       }
     } else if (notification is ScrollEndNotification) {
-      // Reset accumulator when scroll ends
-      _overscrollAccumulator = 0.0;
+      _resetOverscrollTracking();
     } else if (notification is OverscrollNotification) {
-      // Handle overscroll (iOS bounce effect)
       if (notification.overscroll < 0) {
+        _overscrollStartTime ??= DateTime.now();
         _overscrollAccumulator += notification.overscroll.abs();
 
-        if (_overscrollAccumulator >= _collapseThreshold) {
-          _overscrollAccumulator = 0.0;
+        final duration = DateTime.now().difference(_overscrollStartTime!);
+        final hasMinDuration =
+            duration.inMilliseconds >= _minOverscrollDurationMs;
+
+        if (_overscrollAccumulator >= _collapseThreshold && hasMinDuration) {
+          _resetOverscrollTracking();
           _animateSheetTo(SheetState.collapsed);
           return true;
         }
@@ -740,6 +742,12 @@ class _CustomerHomePageState extends State<CustomerHomePage>
     }
 
     return false;
+  }
+
+  void _resetOverscrollTracking() {
+    _overscrollAccumulator = 0.0;
+    _overscrollStartTime = null;
+    _lastOverscrollVelocity = 0.0;
   }
 
   Future<void> _initializeClustering() async {
@@ -1143,22 +1151,15 @@ class _CustomerHomePageState extends State<CustomerHomePage>
   void _focusStoreOnMap(StoreModel store) {
     if (_isDisposed || !mounted) return;
 
-    // Immediately reset scroll to top for proper collapsed view
     if (_scrollController.hasClients) {
       _scrollController.jumpTo(0);
     }
 
-    // Reset overscroll accumulator
-    _overscrollAccumulator = 0.0;
-
-    // Select the store
+    _resetOverscrollTracking();
     _selectedStore.value = store;
     _addShopMarkers();
-
-    // Force collapse the sheet even if it's animating
     _animateSheetTo(SheetState.collapsed, force: true);
 
-    // Delay map focus slightly to ensure sheet collapse animation starts
     Future.delayed(const Duration(milliseconds: 100), () {
       if (_mapController != null && !_isDisposed && mounted) {
         final offsetLatitude = store.latitude + 0.0005;
@@ -1339,7 +1340,6 @@ class _CustomerHomePageState extends State<CustomerHomePage>
     final appBarHeight = 56.h;
     final buttonTopPosition = safeAreaTop + appBarHeight + 24.h;
     final screenHeight = MediaQuery.of(context).size.height;
-
     final sheetTopMargin = safeAreaTop + appBarHeight + 20.h;
 
     return Scaffold(
@@ -1420,39 +1420,39 @@ class _CustomerHomePageState extends State<CustomerHomePage>
             },
           ),
 
-          // FIXED: Sheet with NotificationListener for pull-to-collapse
-          AnimatedBuilder(
-            animation: _sheetAnimation,
-            builder: (context, child) {
-              final maxSheetHeight = screenHeight - sheetTopMargin;
-              final sheetHeight = maxSheetHeight * _sheetAnimation.value;
+          // IMPROVED: Proper reactive filtering with animation separation
+          ValueListenableBuilder<StoreFilterState>(
+            valueListenable: _filterState,
+            builder: (context, filterState, _) {
+              _updateFilteredStores(filterState);
 
-              return Positioned(
-                left: 0,
-                right: 0,
-                bottom: 0,
-                height: sheetHeight,
-                child: Container(
-                  decoration: BoxDecoration(
-                    color: Theme.of(context).colorScheme.surface,
-                    borderRadius:
-                        BorderRadius.vertical(top: Radius.circular(24.r)),
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.black.withValues(alpha: 0.1),
-                        blurRadius: 16,
-                        offset: const Offset(0, -4),
+              return AnimatedBuilder(
+                animation: _sheetAnimation,
+                builder: (context, child) {
+                  final maxSheetHeight = screenHeight - sheetTopMargin;
+                  final sheetHeight = maxSheetHeight * _sheetAnimation.value;
+
+                  return Positioned(
+                    left: 0,
+                    right: 0,
+                    bottom: 0,
+                    height: sheetHeight,
+                    child: Container(
+                      decoration: BoxDecoration(
+                        color: Theme.of(context).colorScheme.surface,
+                        borderRadius:
+                            BorderRadius.vertical(top: Radius.circular(24.r)),
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black.withValues(alpha: 0.1),
+                            blurRadius: 16,
+                            offset: const Offset(0, -4),
+                          ),
+                        ],
                       ),
-                    ],
-                  ),
-                  child: NotificationListener<ScrollNotification>(
-                    onNotification: _handleScrollNotification,
-                    child: ValueListenableBuilder<StoreFilterState>(
-                      valueListenable: _filterState,
-                      builder: (context, filterState, _) {
-                        _updateFilteredStores(filterState);
-
-                        return OptimizedStoreListView(
+                      child: NotificationListener<ScrollNotification>(
+                        onNotification: _handleScrollNotification,
+                        child: OptimizedStoreListView(
                           scrollController: _scrollController,
                           filterState: filterState,
                           filteredStores: _cachedFilteredStores,
@@ -1463,11 +1463,11 @@ class _CustomerHomePageState extends State<CustomerHomePage>
                           onStoreSelected: _navigateToStoreDetails,
                           onStoreFocused: _focusStoreOnMap,
                           onHandleTap: _toggleSheet,
-                        );
-                      },
+                        ),
+                      ),
                     ),
-                  ),
-                ),
+                  );
+                },
               );
             },
           ),
@@ -1477,9 +1477,72 @@ class _CustomerHomePageState extends State<CustomerHomePage>
   }
 }
 
-// ============================================================================
-// OPTIMIZED STORE LIST VIEW (Keep exactly the same)
-// ============================================================================
+class StickyFiltersDelegate extends SliverPersistentHeaderDelegate {
+  final StoreTab selectedTab;
+  final ValueChanged<StoreTab> onTabChanged;
+  final List<String> categories;
+  final String? selectedCategory;
+  final ValueChanged<String?> onCategoryChanged;
+  final SortOption currentSort;
+  final ValueChanged<SortOption> onSortChanged;
+
+  const StickyFiltersDelegate({
+    required this.selectedTab,
+    required this.onTabChanged,
+    required this.categories,
+    required this.selectedCategory,
+    required this.onCategoryChanged,
+    required this.currentSort,
+    required this.onSortChanged,
+  });
+
+  @override
+  double get minExtent => 110.h;
+
+  @override
+  double get maxExtent => 110.h;
+
+  @override
+  bool shouldRebuild(covariant StickyFiltersDelegate oldDelegate) {
+    return selectedTab != oldDelegate.selectedTab ||
+        selectedCategory != oldDelegate.selectedCategory ||
+        currentSort != oldDelegate.currentSort;
+  }
+
+  @override
+  Widget build(
+      BuildContext context, double shrinkOffset, bool overlapsContent) {
+    return Container(
+      color: Theme.of(context).colorScheme.surface,
+      padding: EdgeInsets.symmetric(horizontal: 16.w, vertical: 8.h),
+      child: Column(
+        children: [
+          SegmentedControlWidget(
+            selectedTab: selectedTab,
+            onTabChanged: onTabChanged,
+          ),
+          SizedBox(height: 12.h),
+          Row(
+            children: [
+              Expanded(
+                child: CategoryChipsWidget(
+                  categories: categories,
+                  selectedCategory: selectedCategory,
+                  onCategoryChanged: onCategoryChanged,
+                ),
+              ),
+              SizedBox(width: 8.w),
+              SortButton(
+                currentSort: currentSort,
+                onSortChanged: onSortChanged,
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
 
 class OptimizedStoreListView extends StatelessWidget {
   final ScrollController scrollController;
@@ -1530,48 +1593,27 @@ class OptimizedStoreListView extends StatelessWidget {
             ),
           ),
         ),
-        SliverToBoxAdapter(child: SizedBox(height: 8.h)),
-        SliverToBoxAdapter(
-          child: Padding(
-            padding: EdgeInsets.symmetric(horizontal: 16.w),
-            child: SegmentedControlWidget(
-              selectedTab: filterState.tab,
-              onTabChanged: (tab) {
-                onFilterChanged(filterState.copyWith(tab: tab));
-              },
-            ),
+        SliverPersistentHeader(
+          pinned: true,
+          delegate: StickyFiltersDelegate(
+            selectedTab: filterState.tab,
+            onTabChanged: (tab) {
+              onFilterChanged(filterState.copyWith(tab: tab));
+            },
+            categories: categories,
+            selectedCategory: filterState.category,
+            onCategoryChanged: (category) {
+              onFilterChanged(filterState.copyWith(
+                category: category,
+                clearCategory: category == null,
+              ));
+            },
+            currentSort: filterState.sortOption,
+            onSortChanged: (sort) {
+              onFilterChanged(filterState.copyWith(sortOption: sort));
+            },
           ),
         ),
-        SliverToBoxAdapter(child: SizedBox(height: 12.h)),
-        SliverToBoxAdapter(
-          child: Padding(
-            padding: EdgeInsets.symmetric(horizontal: 16.w),
-            child: Row(
-              children: [
-                Expanded(
-                  child: CategoryChipsWidget(
-                    categories: categories,
-                    selectedCategory: filterState.category,
-                    onCategoryChanged: (category) {
-                      onFilterChanged(filterState.copyWith(
-                        category: category,
-                        clearCategory: category == null,
-                      ));
-                    },
-                  ),
-                ),
-                SizedBox(width: 8.w),
-                SortButton(
-                  currentSort: filterState.sortOption,
-                  onSortChanged: (sort) {
-                    onFilterChanged(filterState.copyWith(sortOption: sort));
-                  },
-                ),
-              ],
-            ),
-          ),
-        ),
-        SliverToBoxAdapter(child: SizedBox(height: 12.h)),
         if (filteredStores.isEmpty)
           SliverFillRemaining(
             hasScrollBody: false,
@@ -1594,12 +1636,14 @@ class OptimizedStoreListView extends StatelessWidget {
               delegate: SliverChildBuilderDelegate(
                 (context, index) {
                   final store = filteredStores[index];
-                  return KeepAliveStoreCard(
-                    key: ValueKey('store_${store.id}'),
-                    store: store,
-                    deal: storeDeals[store.id],
-                    onTap: () => onStoreSelected(store),
-                    onMapFocus: () => onStoreFocused(store),
+                  return RepaintBoundary(
+                    child: StoreGridCard(
+                      key: ValueKey('store_${store.id}'),
+                      store: store,
+                      deal: storeDeals[store.id],
+                      onTap: () => onStoreSelected(store),
+                      onMapFocus: () => onStoreFocused(store),
+                    ),
                   );
                 },
                 childCount: filteredStores.length,
@@ -1613,48 +1657,7 @@ class OptimizedStoreListView extends StatelessWidget {
   }
 }
 
-// ============================================================================
-// ALL OTHER WIDGETS REMAIN EXACTLY THE SAME
-// ============================================================================
-
-class KeepAliveStoreCard extends StatefulWidget {
-  final StoreModel store;
-  final String? deal;
-  final VoidCallback onTap;
-  final VoidCallback onMapFocus;
-
-  const KeepAliveStoreCard({
-    required this.store,
-    this.deal,
-    required this.onTap,
-    required this.onMapFocus,
-    super.key,
-  });
-
-  @override
-  State<KeepAliveStoreCard> createState() => _KeepAliveStoreCardState();
-}
-
-class _KeepAliveStoreCardState extends State<KeepAliveStoreCard>
-    with AutomaticKeepAliveClientMixin {
-  @override
-  bool get wantKeepAlive => true;
-
-  @override
-  Widget build(BuildContext context) {
-    super.build(context);
-
-    return RepaintBoundary(
-      child: StoreGridCard(
-        store: widget.store,
-        deal: widget.deal,
-        onTap: widget.onTap,
-        onMapFocus: widget.onMapFocus,
-      ),
-    );
-  }
-}
-
+// UI Widgets (reusing same implementations)
 class NotificationButton extends StatelessWidget {
   const NotificationButton({super.key});
 
@@ -2167,14 +2170,10 @@ class OptimizedStoreImage extends StatelessWidget {
               width: size == double.infinity ? double.infinity : size.w,
               height: (height ?? size).h,
               fit: BoxFit.cover,
-              memCacheWidth: 150,
-              memCacheHeight: 150,
-              maxHeightDiskCache: 150,
-              maxWidthDiskCache: 150,
               placeholder: (context, url) => Container(color: Colors.grey[100]),
               errorWidget: (context, url, error) => _buildPlaceholder(context),
-              fadeInDuration: const Duration(milliseconds: 100),
-              fadeOutDuration: const Duration(milliseconds: 50),
+              fadeInDuration: const Duration(milliseconds: 80),
+              fadeOutDuration: const Duration(milliseconds: 40),
             )
           : _buildPlaceholder(context),
     );
