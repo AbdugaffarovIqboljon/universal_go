@@ -4,7 +4,7 @@ import 'package:universal_go/features/auth/presentation/pages/choose_role_page.d
 import 'package:universal_go/features/auth/presentation/pages/splash_page.dart';
 import 'package:universal_go/features/auth/presentation/pages/login_page.dart';
 import 'package:universal_go/features/auth/presentation/pages/register_page.dart';
-import 'package:universal_go/features/customer/data/models/store_model.dart';
+import 'package:universal_go/features/shops/data/models/store_model.dart';
 import 'package:universal_go/features/customer/presentation/pages/check_out_page.dart';
 import 'package:universal_go/features/customer/presentation/pages/customer_cart_page.dart';
 import 'package:universal_go/features/customer/presentation/pages/customer_main_page.dart';

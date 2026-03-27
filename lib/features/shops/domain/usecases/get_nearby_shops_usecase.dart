@@ -2,8 +2,8 @@ import 'package:dartz/dartz.dart';
 import 'package:equatable/equatable.dart';
 import 'package:universal_go/core/errors/failures.dart';
 import 'package:universal_go/core/base/usecase.dart';
-import 'package:universal_go/features/customer/domain/entities/store_entity.dart';
-import 'package:universal_go/features/customer/domain/repositories/shop_repository.dart';
+import 'package:universal_go/features/shops/domain/entities/store_entity.dart';
+import 'package:universal_go/features/shops/domain/repositories/shop_repository.dart';
 
 class GetNearbyShopsUseCase implements UseCase<List<StoreEntity>, GetNearbyShopsParams> {
   final ShopRepository repository;
@@ -34,3 +34,4 @@ class GetNearbyShopsParams extends Equatable {
   @override
   List<Object> get props => [latitude, longitude, radiusInKm];
 }
+

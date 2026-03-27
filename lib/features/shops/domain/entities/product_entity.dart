@@ -42,3 +42,4 @@ class ProductEntity extends Equatable {
         updatedAt,
       ];
 }
+

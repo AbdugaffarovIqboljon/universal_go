@@ -63,3 +63,4 @@ class StoreEntity extends Equatable {
         products,
       ];
 }
+

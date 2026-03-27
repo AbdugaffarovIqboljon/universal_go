@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
-import 'package:universal_go/features/customer/data/models/product_model.dart';
+import 'package:universal_go/features/shops/data/models/product_model.dart';
 
 class ProductCard extends StatelessWidget {
   final ProductModel product;
