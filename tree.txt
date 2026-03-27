@@ -14,13 +14,17 @@ lib
 │   ├── navigation
 │   │   ├── app_router.dart
 │   │   └── app_routes.dart
+│   ├── providers
+│   │   └── theme_provider.dart
 │   ├── services
 │   │   ├── firebase
 │   │   │   ├── firebase_service.dart
 │   │   │   └── firebase_service_impl.dart
-│   │   └── location
-│   │       ├── location_service.dart
-│   │       └── location_service_impl.dart
+│   │   ├── location
+│   │   │   ├── location_service.dart
+│   │   │   ├── location_service_impl.dart
+│   │   │   └── yandex_geocoder_service.dart
+│   │   └── theme_service.dart
 │   └── utils
 │       ├── helpers.dart
 │       ├── lat_lng.dart
@@ -76,9 +80,12 @@ lib
 │   │       ├── pages
 │   │       │   ├── check_out_page.dart
 │   │       │   ├── customer_cart_page.dart
+│   │       │   ├── customer_determine_location_page.dart
 │   │       │   ├── customer_home_page.dart
 │   │       │   ├── customer_main_page.dart
+│   │       │   ├── customer_order_status_screen.dart
 │   │       │   ├── customer_profile_page.dart
+│   │       │   ├── settings_page.dart
 │   │       │   └── store_details_page.dart
 │   │       └── widgets
 │   │           └── product_card.dart
@@ -137,4 +144,5 @@ lib
     ├── utils
     │   └── app_formatter.dart
     └── widgets
-        └── app_button.dart
+        ├── app_button.dart
+        └── theme_toggle_widget.dart

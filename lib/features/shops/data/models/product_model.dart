@@ -1,4 +1,4 @@
-import 'package:universal_go/features/customer/domain/entities/product_entity.dart';
+import 'package:universal_go/features/shops/domain/entities/product_entity.dart';
 
 class ProductModel extends ProductEntity {
   const ProductModel({
@@ -91,3 +91,27 @@ class ProductModel extends ProductEntity {
     );
   }
 }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

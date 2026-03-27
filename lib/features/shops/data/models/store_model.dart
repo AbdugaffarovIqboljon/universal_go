@@ -1,5 +1,5 @@
-import 'package:universal_go/features/customer/domain/entities/store_entity.dart';
-import 'package:universal_go/features/customer/domain/entities/product_entity.dart';
+import 'package:universal_go/features/shops/domain/entities/store_entity.dart';
+import 'package:universal_go/features/shops/domain/entities/product_entity.dart';
 import 'product_model.dart';
 
 class StoreModel extends StoreEntity {
@@ -148,3 +148,27 @@ class StoreModel extends StoreEntity {
   @override
   List<Object?> get props => [...super.props, distance];
 }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

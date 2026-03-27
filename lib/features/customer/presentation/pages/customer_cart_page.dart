@@ -215,7 +215,7 @@ class CartItemCard extends StatelessWidget {
               width: 75.w,
               height: 75.h,
               decoration: BoxDecoration(
-                color: Theme.of(context).colorScheme.surfaceVariant,
+                color: Theme.of(context).colorScheme.surfaceContainerHighest,
               ),
               child: Image.asset(
                 item.image,
@@ -346,7 +346,7 @@ class QuantityButton extends StatelessWidget {
         width: 32.w,
         height: 32.h,
         decoration: BoxDecoration(
-          color: Theme.of(context).colorScheme.surfaceVariant,
+          color: Theme.of(context).colorScheme.surfaceContainerHighest,
           borderRadius: BorderRadius.circular(8.r),
         ),
         child: Icon(

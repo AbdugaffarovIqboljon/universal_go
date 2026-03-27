@@ -234,7 +234,7 @@ class SettingsPage extends StatelessWidget {
           ? Switch(
               value: isSwitch,
               onChanged: onChanged,
-              activeColor: Theme.of(context).colorScheme.primary,
+              activeThumbColor: Theme.of(context).colorScheme.primary,
             )
           : Icon(
               Icons.chevron_right,

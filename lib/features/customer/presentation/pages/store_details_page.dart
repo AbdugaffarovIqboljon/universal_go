@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
-import 'package:universal_go/features/customer/data/models/store_model.dart';
-import 'package:universal_go/features/customer/data/models/product_model.dart';
+import 'package:universal_go/features/shops/data/models/store_model.dart';
+import 'package:universal_go/features/shops/data/models/product_model.dart';
 
 class StoreDetailsPage extends StatefulWidget {
   final StoreModel store;
@@ -312,7 +312,7 @@ class ProductCard extends StatelessWidget {
           Container(
             height: 140.h,
             decoration: BoxDecoration(
-              color: Theme.of(context).colorScheme.surfaceVariant,
+              color: Theme.of(context).colorScheme.surfaceContainerHighest,
               borderRadius: BorderRadius.vertical(
                 top: Radius.circular(12.r),
               ),
