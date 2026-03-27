@@ -1,11 +1,19 @@
 package com.example.universal_go
 
-import android.app.Application
+import androidx.multidex.MultiDexApplication
 import com.yandex.mapkit.MapKitFactory
 
-class MainApplication : Application() {
+class MainApplication : MultiDexApplication() {
     override fun onCreate() {
         super.onCreate()
-        MapKitFactory.setApiKey(BuildConfig.YANDEX_API_KEY)
+        try {
+            val apiKey = BuildConfig.YANDEX_API_KEY
+            if (apiKey.isNotEmpty()) {
+                MapKitFactory.setApiKey(apiKey)
+                MapKitFactory.initialize(this)
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
     }
 }
